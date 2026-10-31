@@ -100,16 +100,31 @@
     if (!st || typeof st !== 'object') return tokens;
 
     function walk(obj, depth) {
-      if (!obj || typeof obj !== 'object' || depth > 7) return;
+      if (!obj || typeof obj !== 'object' || depth > 8) return;
       if (Array.isArray(obj)) {
         for (let i = 0; i < obj.length; i++) walk(obj[i], depth + 1);
         return;
       }
-      const id = obj.id || obj.noteId || (obj.noteCard && obj.noteCard.noteId);
-      const token = obj.xsecToken || obj.xsec_token;
+      const id = obj.id || obj.noteId || obj.note_id || (obj.noteCard && (obj.noteCard.noteId || obj.noteCard.note_id || obj.noteCard.id));
+      const token = obj.xsecToken || obj.xsec_token || obj.token || (obj.noteCard && (obj.noteCard.xsecToken || obj.noteCard.xsec_token));
       if (typeof id === 'string' && /^[0-9a-f]{24}$/i.test(id) && typeof token === 'string' && token) {
-        tokens[id.toLowerCase()] = token;
+        tokens[id.toLowerCase()] = token.replace(/%3D/gi, '=');
       }
+
+      // 尝试从包含链接的字段中正则提取
+      const urlStr = obj.url || obj.link || obj.shareUrl || obj.path;
+      if (typeof urlStr === 'string' && /[?&]xsec_token=/i.test(urlStr)) {
+        const mId = urlStr.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{24})/i);
+        const mTk = urlStr.match(/[?&]xsec_token=([^&#]+)/i);
+        if (mId && mTk) {
+          try {
+            tokens[mId[1].toLowerCase()] = decodeURIComponent(mTk[1]).replace(/%3D/gi, '=');
+          } catch (e) {
+            tokens[mId[1].toLowerCase()] = mTk[1].replace(/%3D/gi, '=');
+          }
+        }
+      }
+
       const keys = Object.keys(obj);
       for (let i = 0; i < keys.length; i++) {
         const k = keys[i];

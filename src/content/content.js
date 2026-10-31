@@ -382,42 +382,49 @@
   }
 
   function noteFromCard(el) {
+    if (!el) return null;
+
     let href = '';
     let id = '';
+    let token = '';
 
-    // 1. 如果 el 本身就是 <a> 标签且包含有效 noteId
-    if (el.tagName === 'A' && el.getAttribute('href')) {
-      href = el.getAttribute('href');
-      id = C.extractNoteId(href);
+    // 收集卡片关联的所有 <a> 候选节点
+    const candidates = [];
+    if (el.tagName === 'A' && (el.getAttribute('href') || el.href)) {
+      candidates.push(el);
+    }
+    const innerLinks = $$('a[href]', el);
+    for (let i = 0; i < innerLinks.length; i++) {
+      candidates.push(innerLinks[i]);
+    }
+    if (el.closest) {
+      const up = el.closest('a[href]');
+      if (up) candidates.push(up);
     }
 
-    // 2. 遍历卡片内部所有 <a> 标签，提取真正的笔记 ID
-    if (!id) {
-      const links = $$('a[href]', el);
-      for (let i = 0; i < links.length; i++) {
-        const h = links[i].getAttribute('href') || '';
-        const nid = C.extractNoteId(h);
-        if (nid) {
+    // 优先匹配既有 noteId 且携带 xsec_token 的有效链接
+    for (let i = 0; i < candidates.length; i++) {
+      const a = candidates[i];
+      const rawH = a.getAttribute('href') || a.href || '';
+      const nid = C.extractNoteId(rawH);
+      if (nid) {
+        if (!id) {
           id = nid;
-          href = h;
-          break;
+          href = rawH;
         }
-      }
-    }
-
-    // 3. 向上寻找包装链接
-    if (!id) {
-      const up = el.closest ? el.closest('a[href]') : null;
-      if (up) {
-        href = up.getAttribute('href') || '';
-        id = C.extractNoteId(href);
+        const t = C.extractXsecToken(rawH) || a.getAttribute('data-xsec-token') || a.getAttribute('data-token') || '';
+        if (t) {
+          id = nid;
+          href = rawH;
+          token = t;
+          break; // 找到完整带 token 凭证的链接，立即采纳
+        }
       }
     }
 
     if (!id) return null;
 
     // 提取可绕过防爬/扫码拦截的 xsec_token 安全凭证并生成完整原文链接
-    let token = C.extractXsecToken(href);
     if (!token && el.getAttribute) {
       token = el.getAttribute('data-xsec-token') || el.getAttribute('data-token') || '';
     }
@@ -498,6 +505,7 @@
   function syncDomCardsToCandidates() {
     if (!PROFILE_RE.test(location.pathname)) return false;
     if (isOwnNotesPage()) return false;
+    quietly(syncPageTokens());
 
     // 智能识别卡片归属：必须基于左侧小红书页面客观真实的 Tab / URL！
     // 严禁受侧边栏筛选按钮（state.settings.mode）篡改，防止把收藏卡片误存入点赞缓存！
@@ -1635,7 +1643,7 @@
 
     // 更新查看原文链接按钮（必须附带安全令牌 xsec_token 才能在新标签页直接查看原文并绕过扫码拦截）
     const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
-    const noteUrl = note.url || C.buildNoteUrl(note.id, token);
+    const noteUrl = C.buildNoteUrl(note.url || note.id, token);
     if (stackState.els.btnOpen) {
       if (noteUrl) {
         stackState.els.btnOpen.href = noteUrl;
@@ -2382,7 +2390,7 @@
       '        <img class="rn-card-cover-img" id="rn-card-img" alt="封面" style="display:none;" />',
       '        <div class="rn-card-cover-empty" id="rn-card-empty">🎴</div>',
       '        <span class="rn-card-status-pill" id="rn-card-status">待处理</span>',
-      '        <a class="rn-card-open-btn" id="rn-card-open-btn" target="_blank" rel="noopener noreferrer" title="在新标签页中打开查看笔记原文">查看原文 ↗</a>',
+      '        <a class="rn-card-open-btn" id="rn-card-open-btn" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">查看原文 ↗</a>',
       '      </div>',
       '      <div class="rn-card-info-box">',
       '        <div class="rn-card-title" id="rn-card-title"></div>',
@@ -2452,6 +2460,15 @@
     if (openBtn) {
       openBtn.addEventListener('click', function (ev) {
         ev.stopPropagation();
+        ev.preventDefault();
+        const note = stackState.list[stackState.index];
+        if (note && note.id) {
+          const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
+          const url = C.buildNoteUrl(note.url || note.id, token);
+          if (url) {
+            window.open(url, '_blank', 'noopener');
+          }
+        }
       });
     }
 
@@ -2459,11 +2476,14 @@
     if (titleEl) {
       titleEl.addEventListener('click', function (ev) {
         ev.stopPropagation();
+        ev.preventDefault();
         const note = stackState.list[stackState.index];
         if (note && note.id) {
           const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
-          const url = note.url || C.buildNoteUrl(note.id, token);
-          window.open(url, '_blank', 'noopener,noreferrer');
+          const url = C.buildNoteUrl(note.url || note.id, token);
+          if (url) {
+            window.open(url, '_blank', 'noopener');
+          }
         }
       });
     }
@@ -2573,7 +2593,7 @@
         title: n.title,
         author: n.author || '',
         cover: n.cover || '',
-        url: n.url || C.buildNoteUrl(n.id, token),
+        url: C.buildNoteUrl(n.url || n.id, token),
         xsecToken: token,
       };
     };
@@ -2793,6 +2813,7 @@
     await loadStorage();
     updateMyProfileInfo();
     quietly(detectMyUserInfo());
+    quietly(syncPageTokens());
     tick();
     syncDomCardsToCandidates();
     broadcastState();

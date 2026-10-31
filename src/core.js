@@ -172,30 +172,52 @@
   function extractXsecToken(href) {
     const s = String(href || '');
     const m = s.match(/[?&]xsec_token=([^&#]+)/i);
-    return m ? decodeURIComponent(m[1]) : '';
+    if (!m) return '';
+    try {
+      return decodeURIComponent(m[1]).replace(/%3D/gi, '=');
+    } catch (e) {
+      return m[1].replace(/%3D/gi, '=');
+    }
   }
 
   /**
    * 构建可直接在浏览器新标签页打开且绕过防爬/扫码拦截的完整原文链接
+   * 注意：小红书 xsec_token 为 base64 字符串（常见末尾为 =），服务端直接比对字面量，
+   * 严禁把末尾的 = 转码为 %3D，否则会导致服务端鉴权失效被判定为爬虫并弹出二维码/无法访问。
    */
   function buildNoteUrl(noteOrId, token) {
     if (!noteOrId) return '';
+    let raw = '';
     let id = '';
     let xToken = token || '';
-    let rawUrl = '';
 
     if (typeof noteOrId === 'string') {
-      id = extractNoteId(noteOrId) || (/^[0-9a-f]{24}$/i.test(noteOrId) ? noteOrId.toLowerCase() : '');
-      if (!xToken) xToken = extractXsecToken(noteOrId);
+      raw = noteOrId.trim();
+      id = extractNoteId(raw);
+      if (!xToken) xToken = extractXsecToken(raw);
     } else if (typeof noteOrId === 'object') {
-      id = noteOrId.id || extractNoteId(noteOrId.url || noteOrId.href);
-      rawUrl = noteOrId.url || noteOrId.href || '';
-      xToken = xToken || noteOrId.xsecToken || extractXsecToken(rawUrl);
+      raw = String(noteOrId.url || noteOrId.href || '').trim();
+      id = noteOrId.id || extractNoteId(raw);
+      xToken = xToken || noteOrId.xsecToken || extractXsecToken(raw);
     }
 
+    if (!id && raw && /^[0-9a-f]{24}$/i.test(raw)) {
+      id = raw.toLowerCase();
+    }
     if (!id) return '';
+
+    // 若原链接本身就是小红书 explore / discovery 链接且已包含 xsec_token，直接返回标准化域名链接
+    if (raw && (raw.indexOf('/explore/' + id) !== -1 || raw.indexOf('/discovery/item/' + id) !== -1)) {
+      const full = raw.startsWith('http') ? raw : ('https://www.xiaohongshu.com' + (raw.startsWith('/') ? '' : '/') + raw);
+      if (/[?&]xsec_token=/i.test(full)) {
+        return full.replace(/([?&]xsec_token=[^&#]*?)%3D/gi, '$1=');
+      }
+    }
+
+    // 组装带安全凭证的有效外链（保持原生 token 字面量，包含末尾 =，不转码为 %3D）
     if (xToken) {
-      return 'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=' + encodeURIComponent(xToken) + '&xsec_source=pc_user';
+      const cleanToken = String(xToken).replace(/%3D/gi, '=');
+      return 'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=' + cleanToken + '&xsec_source=pc_user';
     }
     return 'https://www.xiaohongshu.com/explore/' + id + '?xsec_source=pc_user';
   }

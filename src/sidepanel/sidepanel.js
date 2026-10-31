@@ -421,7 +421,7 @@ function renderList(candidates, visible, st, query) {
         '</div>';
     }
 
-    const noteUrl = n.url || C.buildNoteUrl(n.id, n.xsecToken);
+    const noteUrl = C.buildNoteUrl(n.url || n.id, n.xsecToken);
     return (
       '<div class="rn-item' + (isSel ? ' rn-sel' : '') + (isDone ? ' rn-done' : '') + '"' +
       ' data-id="' + esc(n.id) + '" role="checkbox" aria-checked="' + (isSel ? 'true' : 'false') + '"' +
@@ -430,7 +430,7 @@ function renderList(candidates, visible, st, query) {
       '<div class="rn-item-main">' +
         '<div class="rn-item-row">' +
           '<span class="rn-nm">' + esc(titleOf(n)) + '</span>' +
-          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener noreferrer" title="在新标签页中打开查看笔记原文">↗</a>' +
+          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">↗</a>' +
           '<span class="rn-id">' + esc(n.id.slice(-6)) + '</span>' +
         '</div>' +
         tagsHtml +
@@ -755,9 +755,19 @@ function bindEvents() {
       requestState();
       return;
     }
-    // 点击查看原文外链，阻止冒泡到列表项勾选事件
-    if (ev.target && ev.target.closest && ev.target.closest('.rn-item-link')) {
+    // 点击查看原文外链，优先使用 chrome.tabs.create 打开新标签页，并阻止冒泡到列表项勾选事件
+    const link = ev.target && ev.target.closest ? ev.target.closest('.rn-item-link') : null;
+    if (link) {
+      ev.preventDefault();
       ev.stopPropagation();
+      const targetUrl = link.getAttribute('href') || link.href;
+      if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
+        if (chrome.tabs && typeof chrome.tabs.create === 'function') {
+          chrome.tabs.create({ url: targetUrl });
+        } else {
+          window.open(targetUrl, '_blank', 'noopener');
+        }
+      }
       return;
     }
     const item = ev.target && ev.target.closest ? ev.target.closest('.rn-item') : null;

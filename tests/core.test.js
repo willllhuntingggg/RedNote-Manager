@@ -55,6 +55,16 @@ test('extractNoteId 只取笔记 ID，不把用户 ID 当笔记 ID', () => {
     C.buildNoteUrl(testUrl),
     'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=AB1234567890Token&xsec_source=pc_user'
   );
+
+  // 严格实测：真实小红书带 = 结尾的 Base64 凭证，绝不可被错误编码为 %3D 导致鉴权失效
+  const realSampleUrl = 'https://www.xiaohongshu.com/explore/66957156000000002501503d?xsec_token=ABQUEHMu1VfxzjQXtXSimxV7WokOA1b5d7lTwH_EykqqM=&xsec_source=pc_user';
+  const realToken = 'ABQUEHMu1VfxzjQXtXSimxV7WokOA1b5d7lTwH_EykqqM=';
+  assert.strictEqual(C.extractXsecToken(realSampleUrl), realToken);
+  assert.strictEqual(C.buildNoteUrl('66957156000000002501503d', realToken), realSampleUrl);
+  assert.strictEqual(C.buildNoteUrl(realSampleUrl), realSampleUrl);
+  assert.strictEqual(C.buildNoteUrl({ id: '66957156000000002501503d', xsecToken: realToken }), realSampleUrl);
+  // 容错：即使传入已误编码为 %3D 的 token，也能自动还原为原版 =
+  assert.strictEqual(C.buildNoteUrl('66957156000000002501503d', 'ABQUEHMu1VfxzjQXtXSimxV7WokOA1b5d7lTwH_EykqqM%3D'), realSampleUrl);
 });
 
 test('clampSettings 兜底默认值并夹住危险输入', () => {
