@@ -1,0 +1,2794 @@
+/*
+ * RedNote Manager · 内容脚本（隔离世界）
+ * ---------------------------------------------------------------
+ * 职责：
+ *   1. 从「我的主页 → 收藏/赞过」页面读取已渲染的笔记卡片（候选来源）
+ *   2. 通过 bridge.js 调用页面签名函数，逐条发取消请求
+ *   3. 限速 / 批次冷却 / 连续失败暂停 / 风控熔断 / 记录持久化 / 撤销
+ *   4. 页面端卡片勾选 + 底部已选条数浮动实时反馈栏
+ *   5. 与 Chrome 原生侧边栏 (Side Panel) 双向通信同步
+ *
+ * 设计取舍：
+ *   - 界面采用 Chrome 原生侧边栏展开/收起，不再有阻塞网页的大悬浮窗。
+ *   - 用户在小红书页面直接勾选笔记卡片时，底部浮动栏和侧边栏均实时反馈已选条数。
+ *   - 真实模式执行，每次运行二次确认，受单次上限与安全限速严格保护。
+ */
+(function () {
+  'use strict';
+
+  const C = globalThis.RNCore;
+  const STYLE = globalThis.RNStyle;
+  if (!C || !STYLE) {
+    console.warn('[RedNote Manager] core/style 未加载，脚本退出');
+    return;
+  }
+  if (window.__RN_CONTENT_READY__) return;
+  window.__RN_CONTENT_READY__ = true;
+
+  /* ============================ 常量 ============================ */
+
+  const KEY_SETTINGS = 'rn:settings';
+  const KEY_PROCESSED = 'rn:processed';
+  const KEY_HISTORY = 'rn:history';
+  const KEY_AI_TAGS = 'rn:ai_tags';
+  const PROFILE_RE = /\/user\/profile(?:\/([0-9a-f]{24}))?/i;
+  const PROCESSED_CAP = 3000;
+  const HISTORY_CAP = 800;
+  const LOG_CAP = 200;
+
+  const TAB_ALIASES = { 收藏: ['收藏'], 点赞: ['点赞', '赞过'], 赞过: ['赞过', '点赞'] };
+  const ACTIVE_RE = /(?:^|\s)(?:active|current|selected|on)(?:\s|$)/i;
+  const EDIT_TEXT = /编辑资料|编辑主页|发布笔记/;
+
+  /* ============================ 状态 ============================ */
+
+  const state = {
+    settings: C.clampSettings(null),
+    aiTags: {},
+    /** 模式独立候选集缓存：uncollect 存收藏候选，unlike 存点赞候选 */
+    modeCache: {
+      uncollect: [],
+      unlike: [],
+    },
+    /** 模式独立勾选集缓存 */
+    modeSelected: {
+      uncollect: new Map(),
+      unlike: new Map(),
+    },
+    /** 当前活跃模式 candidates 的动态引用（保持与各模式缓存同步） */
+    candidates: [],
+    /** 当前活跃模式 selected 的动态引用 */
+    selected: new Map(),
+    /** Shift 区间选择的锚点 */
+    anchorId: null,
+    processed: { uncollect: [], unlike: [] },
+    history: [],
+    running: false,
+    stopRequested: false,
+    stats: { ok: 0, fail: 0, risk: false, startedAt: 0, total: 0 },
+    logs: [],
+    mounted: false,
+    els: null,
+  };
+
+  /** 同步 candidates / selected 指针指向当前活跃模式的独立缓存 */
+  function syncActiveModePointers() {
+    const m = (state.settings && state.settings.mode) || 'uncollect';
+    if (!state.modeCache) state.modeCache = { uncollect: [], unlike: [] };
+    if (!state.modeSelected) state.modeSelected = { uncollect: new Map(), unlike: new Map() };
+    if (!state.modeCache[m]) state.modeCache[m] = [];
+    if (!state.modeSelected[m]) state.modeSelected[m] = new Map();
+    state.candidates = state.modeCache[m];
+    state.selected = state.modeSelected[m];
+  }
+
+  /* ============================ 小工具 ============================ */
+
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms || 0)));
+  const nowMs = () => Date.now();
+
+  function stamp() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function log(msg, kind) {
+    state.logs.push({ t: stamp(), msg: String(msg), kind: kind || 'info' });
+    if (state.logs.length > LOG_CAP) state.logs.shift();
+    broadcastState();
+    if (kind === 'err') console.warn('[RedNote Manager]', msg);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function titleOf(note) {
+    const t = (note && note.title) || '未命名笔记';
+    return t.length > 34 ? t.slice(0, 34) + '…' : t;
+  }
+
+  /** 可被「停止」打断的等待；返回 false 表示等待期间被叫停 */
+  async function interruptibleSleep(ms) {
+    const end = nowMs() + Math.max(0, ms || 0);
+    while (nowMs() < end) {
+      if (state.stopRequested) return false;
+      await sleep(Math.min(200, end - nowMs()));
+    }
+    return !state.stopRequested;
+  }
+
+  /* ============================ 持久化 ============================ */
+
+  async function loadStorage() {
+    try {
+      const got = await chrome.storage.local.get([KEY_SETTINGS, KEY_PROCESSED, KEY_HISTORY, KEY_AI_TAGS]);
+      state.settings = C.clampSettings(got[KEY_SETTINGS]);
+      const p = got[KEY_PROCESSED] || {};
+      state.processed.uncollect = Array.isArray(p.uncollect) ? p.uncollect.slice(-PROCESSED_CAP) : [];
+      state.processed.unlike = Array.isArray(p.unlike) ? p.unlike.slice(-PROCESSED_CAP) : [];
+      state.history = Array.isArray(got[KEY_HISTORY]) ? got[KEY_HISTORY].slice(-HISTORY_CAP) : [];
+      state.aiTags = got[KEY_AI_TAGS] || {};
+    } catch (e) {
+      console.warn('[RedNote Manager] 读取存储失败', e);
+    }
+  }
+
+  function quietly(p) {
+    if (p && typeof p.catch === 'function') p.catch(function () {});
+    return p;
+  }
+
+  function saveSettings() {
+    try {
+      quietly(chrome.storage.local.set({ [KEY_SETTINGS]: state.settings }));
+    } catch (e) { /* 扩展重载时忽略 */ }
+  }
+
+  function saveProcessed() {
+    try {
+      quietly(chrome.storage.local.set({
+        [KEY_PROCESSED]: {
+          uncollect: state.processed.uncollect.slice(-PROCESSED_CAP),
+          unlike: state.processed.unlike.slice(-PROCESSED_CAP),
+        },
+      }));
+    } catch (e) { /* 忽略 */ }
+  }
+
+  async function saveHistory() {
+    try {
+      await chrome.storage.local.set({ [KEY_HISTORY]: state.history.slice(-HISTORY_CAP) });
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function isProcessed(mode, id) {
+    return state.processed[mode].indexOf(id) !== -1;
+  }
+
+  function markProcessed(mode, id) {
+    if (isProcessed(mode, id)) return;
+    state.processed[mode].push(id);
+    if (state.processed[mode].length > PROCESSED_CAP) {
+      state.processed[mode] = state.processed[mode].slice(-PROCESSED_CAP);
+    }
+    saveProcessed();
+  }
+
+  function unmarkProcessed(mode, id) {
+    const i = state.processed[mode].indexOf(id);
+    if (i !== -1) {
+      state.processed[mode].splice(i, 1);
+      saveProcessed();
+    }
+  }
+
+  function removeCandidate(mode, id) {
+    if (state.modeCache && state.modeCache[mode]) {
+      state.modeCache[mode] = state.modeCache[mode].filter(function (n) { return n.id !== id; });
+    }
+    if (state.candidates) {
+      state.candidates = state.candidates.filter(function (n) { return n.id !== id; });
+    }
+    if (state.modeSelected && state.modeSelected[mode]) {
+      state.modeSelected[mode].delete(id);
+    }
+    if (state.selected) {
+      state.selected.delete(id);
+    }
+  }
+
+  function pushHistory(item) {
+    state.history.push(item);
+    if (state.history.length > HISTORY_CAP) state.history = state.history.slice(-HISTORY_CAP);
+    saveHistory();
+  }
+
+  /* ============================ 与页面通信 ============================ */
+
+  const bridgePending = new Map();
+  let bridgeSeq = 0;
+
+  window.addEventListener('message', function (ev) {
+    if (ev.source !== window) return;
+    const msg = ev.data;
+    if (!msg || msg.source !== 'RN_BRIDGE' || !msg.id) return;
+    const p = bridgePending.get(msg.id);
+    if (!p) return;
+    bridgePending.delete(msg.id);
+    if (msg.ok) p.resolve(msg);
+    else p.reject(new Error(msg.error || '页面内调用失败'));
+  });
+
+  function bridge(kind, payload, timeoutMs) {
+    const id = 'rn-' + (++bridgeSeq) + '-' + nowMs();
+    const limit = timeoutMs || 15000;
+    return new Promise(function (resolve, reject) {
+      const timer = setTimeout(function () {
+        bridgePending.delete(id);
+        reject(new Error('页面内调用超时（' + limit + 'ms）'));
+      }, limit);
+      bridgePending.set(id, {
+        resolve: function (v) { clearTimeout(timer); resolve(v); },
+        reject: function (e) { clearTimeout(timer); reject(e); },
+      });
+      const msg = Object.assign({ source: 'RN_UI', id: id, kind: kind }, payload || {});
+      try {
+        window.postMessage(msg, location.origin);
+      } catch (e) {
+        clearTimeout(timer);
+        bridgePending.delete(id);
+        reject(e);
+      }
+    });
+  }
+
+  async function pingBridge() {
+    try {
+      return await bridge('ping', {}, 4000);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const myProfileInfo = { userId: '', nickname: '' };
+  const ownNoteIdSet = new Set();
+
+  function recordOwnNoteIdsFromDom() {
+    cardNodes().forEach(function (el) {
+      const id = cardIdOf(el);
+      if (id) ownNoteIdSet.add(id);
+    });
+  }
+
+  function updateMyProfileInfo() {
+    const m = location.pathname.match(PROFILE_RE);
+    if (m && m[1]) {
+      myProfileInfo.userId = m[1].toLowerCase();
+    }
+    try {
+      const editBtn = $$('button, a, div').filter(function (el) {
+        return EDIT_TEXT.test(el.textContent || '') && el.children.length <= 2;
+      })[0];
+      if (editBtn) {
+        const header = editBtn.closest('.user-info, #userPageContainer, [class*="user-header"]') || editBtn.parentElement;
+        if (header) {
+          const nameEl = header.querySelector('.user-name, [class*="user-name"], .user-nickname, .info-part .name');
+          if (nameEl && !nameEl.closest('.note-item, .feeds-container, .notes-container')) {
+            const t = (nameEl.textContent || '').trim();
+            if (t && t.length >= 2 && t.length < 50 && !/^(?:笔记|收藏|点赞|赞过)/.test(t)) {
+              myProfileInfo.nickname = t;
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function detectMyUserInfo() {
+    try {
+      const r = await bridge('me', {}, 3000);
+      if (r) {
+        if (r.me) myProfileInfo.userId = r.me.toLowerCase();
+        if (r.nickname) myProfileInfo.nickname = r.nickname.trim();
+        return r;
+      }
+    } catch (e) {}
+    return { me: '', nickname: '' };
+  }
+
+  async function detectMyUserId() {
+    const info = await detectMyUserInfo();
+    return (info && info.me) || myProfileInfo.userId || '';
+  }
+
+  /** 判断是否为当前用户发布的原创笔记（严禁采集与批量操作） */
+  function isOwnNote(note) {
+    if (!note || !note.id) return false;
+    if (ownNoteIdSet.has(note.id)) return true;
+
+    // 1. 若卡片标注的作者 UID 与当前博主 UID 一致，坚决判定为原创笔记！
+    if (myProfileInfo.userId && note.authorId) {
+      if (note.authorId.toLowerCase() === myProfileInfo.userId.toLowerCase()) return true;
+    }
+
+    // 2. 若卡片标注的作者昵称与当前博主昵称一致（至少2字），坚决判定为原创笔记！
+    if (myProfileInfo.nickname && myProfileInfo.nickname.length >= 2 && note.author) {
+      if (note.author.trim() === myProfileInfo.nickname.trim()) return true;
+    }
+
+    return false;
+  }
+
+  /** 发一次写请求；返回 {status, payload} */
+  async function callWrite(mode, phase, noteId) {
+    const req = C.buildWrite(mode, phase, noteId);
+    const res = await bridge('call', { path: req.path, method: req.method, body: req.body }, 20000);
+    return { status: res.status, payload: res.payload };
+  }
+
+  /* ============================ DOM：卡片 / 标签页 ============================ */
+
+  const CARD_SELECTORS = [
+    'section.note-item',
+    '.note-item',
+    '.feeds-container .note-item',
+    '.feeds-container section',
+    'section[class*="note"]',
+    '.note-card',
+    '.feed-card'
+  ];
+  const LINK_SELECTORS = ['a[href*="/explore/"]', 'a.cover[href]', 'a[href*="/discovery/item/"]'];
+  const TITLE_SELECTORS = ['.title span', '.footer .title span', '.title', '.footer .title'];
+
+  function cardNodes() {
+    const out = [];
+    for (let i = 0; i < CARD_SELECTORS.length; i++) {
+      const list = $$(CARD_SELECTORS[i]);
+      for (let j = 0; j < list.length; j++) {
+        if (out.indexOf(list[j]) === -1) out.push(list[j]);
+      }
+    }
+    if (out.length > 0) return out;
+
+    // 强力兜底：通过 /explore/ 链接反向向上寻找卡片容器
+    const links = $$('a[href*="/explore/"]');
+    for (let i = 0; i < links.length; i++) {
+      const a = links[i];
+      const card = a.closest('section, article, [class*="note"], [class*="item"], [class*="card"]') || a.parentElement;
+      if (card && out.indexOf(card) === -1) {
+        out.push(card);
+      }
+    }
+    return out;
+  }
+
+  function noteFromCard(el) {
+    let href = '';
+    let id = '';
+
+    // 1. 如果 el 本身就是 <a> 标签且包含有效 noteId
+    if (el.tagName === 'A' && el.getAttribute('href')) {
+      href = el.getAttribute('href');
+      id = C.extractNoteId(href);
+    }
+
+    // 2. 遍历卡片内部所有 <a> 标签，提取真正的笔记 ID
+    if (!id) {
+      const links = $$('a[href]', el);
+      for (let i = 0; i < links.length; i++) {
+        const h = links[i].getAttribute('href') || '';
+        const nid = C.extractNoteId(h);
+        if (nid) {
+          id = nid;
+          href = h;
+          break;
+        }
+      }
+    }
+
+    // 3. 向上寻找包装链接
+    if (!id) {
+      const up = el.closest ? el.closest('a[href]') : null;
+      if (up) {
+        href = up.getAttribute('href') || '';
+        id = C.extractNoteId(href);
+      }
+    }
+
+    if (!id) return null;
+
+    let title = '';
+    for (let i = 0; i < TITLE_SELECTORS.length; i++) {
+      const t = $(TITLE_SELECTORS[i], el);
+      if (t && t.textContent && t.textContent.trim()) { title = t.textContent.trim(); break; }
+    }
+    if (!title) {
+      const titleEl = el.querySelector('.title, .footer, [class*="title"], a[title]');
+      if (titleEl) title = (titleEl.getAttribute('title') || titleEl.textContent || '').trim();
+    }
+    let cover = '';
+    const img = $('img', el);
+    if (img) {
+      cover = img.getAttribute('src') || img.getAttribute('data-src') || '';
+      if (!title) title = (img.getAttribute('alt') || '').trim();
+    }
+
+    // 提取作者：必须限定在作者区域内部，严禁在卡片外层误抓其他链接！
+    let author = '';
+    let authorId = '';
+    const authorContainer = el.querySelector('.author, .author-wrapper, .user, .name-container, .footer .author, [class*="author"]');
+    if (authorContainer) {
+      const authorNameEl = authorContainer.querySelector('.name, .author-name, .user-name') || authorContainer;
+      author = (authorNameEl.textContent || '').trim();
+      const authorLink = (authorContainer.tagName === 'A' && authorContainer.getAttribute('href'))
+        ? authorContainer
+        : authorContainer.querySelector('a[href*="/user/profile/"]');
+      if (authorLink) {
+        authorId = C.extractUserId(authorLink.getAttribute('href'));
+      }
+    }
+
+    return {
+      id: id,
+      title: title.replace(/\s+/g, ' ').slice(0, 80),
+      author: author.replace(/\s+/g, ' ').slice(0, 40),
+      authorId: authorId,
+      cover: cover,
+    };
+  }
+
+  /**
+   * 扫描当前页面可见的笔记卡片。
+   * 核心安全保护：若明确处于发布笔记页（自己的原创笔记），绝对不读！
+   */
+  function scanCards() {
+    if (isOwnNotesPage()) return [];
+
+    const out = [];
+    cardNodes().forEach(function (el) {
+      const n = noteFromCard(el);
+      if (n && !isOwnNote(n)) out.push(n);
+    });
+    return C.dedupeNotes(out);
+  }
+
+  let currentScannedTabType = '';
+  let staleCardsFromPreviousTab = null;
+  let tabSwitchTimestamp = 0;
+
+  /**
+   * 自动感知用户在页面上已加载/滚动的笔记，无感合入对应模式的独立 candidates 缓存。
+   * 即使未点击「读取列表」，只要用户浏览到了卡片，右侧面板即展示数据（默认未选）。
+   */
+  function syncDomCardsToCandidates() {
+    if (!PROFILE_RE.test(location.pathname)) return false;
+    if (isOwnNotesPage()) return false;
+
+    // 智能识别卡片归属：必须基于左侧小红书页面客观真实的 Tab / URL！
+    // 严禁受侧边栏筛选按钮（state.settings.mode）篡改，防止把收藏卡片误存入点赞缓存！
+    const actualTab = getPageActualTabType();
+    if (actualTab !== 'collect' && actualTab !== 'like') {
+      return false;
+    }
+
+    // 严密防串仓机制：一旦检测到 Tab 切换，立即把切换瞬间残留在 DOM 中的旧 Tab 卡片列入黑名单，
+    // 绝不允许在异步加载的空档期把前一个 Tab 的旧卡片误当作新 Tab 的卡片入库！
+    if (currentScannedTabType && currentScannedTabType !== actualTab) {
+      staleCardsFromPreviousTab = new Set(pageCardIds());
+      tabSwitchTimestamp = Date.now();
+    }
+    currentScannedTabType = actualTab;
+
+    // 过渡黑名单保护仅在切换瞬间（1200ms 内）有效，超时自动释放，杜绝死锁导致后续数据永远为 0
+    const isTransitioning = staleCardsFromPreviousTab && (Date.now() - tabSwitchTimestamp < 1200);
+    if (!isTransitioning && staleCardsFromPreviousTab) {
+      staleCardsFromPreviousTab = null;
+    }
+
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
+    const targetList = state.modeCache[targetMode];
+
+    const cards = scanCards();
+    if (!cards.length) return false;
+
+    // 过滤掉前一个 Tab 残留在 DOM 里的旧卡片
+    const validCards = [];
+    let hasFreshCard = false;
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
+      if (isOwnNote(c)) continue;
+      if (isTransitioning && staleCardsFromPreviousTab.has(c.id)) {
+        // 这是前一个 Tab 残留在页面上的旧卡片，过渡期坚决丢弃！
+        continue;
+      }
+      hasFreshCard = true;
+      validCards.push(c);
+    }
+
+    // 页面上已经渲染出了全新的当前 Tab 卡片，安全解除过渡黑名单保护
+    if (hasFreshCard && staleCardsFromPreviousTab) {
+      staleCardsFromPreviousTab = null;
+    }
+
+    if (!validCards.length) return false;
+
+    let changed = false;
+    const existingMap = new Map();
+    for (let i = 0; i < targetList.length; i++) {
+      existingMap.set(targetList[i].id, targetList[i]);
+    }
+
+    for (let i = 0; i < validCards.length; i++) {
+      const c = validCards[i];
+      if (!existingMap.has(c.id)) {
+        targetList.push(c);
+        existingMap.set(c.id, c);
+        changed = true;
+      } else {
+        const old = existingMap.get(c.id);
+        if (c.title && (!old.title || old.title === '未命名笔记' || old.title.length < c.title.length)) {
+          old.title = c.title;
+          changed = true;
+        }
+        if (c.author && !old.author) {
+          old.author = c.author;
+          changed = true;
+        }
+        if (c.cover && !old.cover) {
+          old.cover = c.cover;
+          changed = true;
+        }
+      }
+    }
+
+    syncActiveModePointers();
+    return changed;
+  }
+
+  const OWN_NOTE_TAB_KEYWORDS = ['笔记', '发布', '原创', '视频', '图文'];
+
+  function detectTabFromText(text) {
+    const clean = String(text || '').replace(/\s+/g, '').replace(/\d+/g, '');
+    if (/^(?:赞过|点赞|喜欢)/.test(clean) || clean.includes('赞过') || clean.includes('点赞')) return 'like';
+    if (/^收藏/.test(clean) || clean.includes('收藏')) return 'collect';
+    if (/^笔记/.test(clean) || clean.includes('笔记')) return 'notes';
+    return '';
+  }
+
+  function isOwnNotesTab(el) {
+    if (!el) return false;
+    const text = (typeof el === 'string' ? el : (el.textContent || '')).replace(/\s+/g, '').replace(/\d+/g, '');
+    return OWN_NOTE_TAB_KEYWORDS.some(function (k) { return text.indexOf(k) === 0; });
+  }
+
+  function isTabItemActive(el) {
+    if (!el) return false;
+    if (el.getAttribute && el.getAttribute('aria-selected') === 'true') return true;
+    if (el.classList) {
+      if (el.classList.contains('reds-tab-item-active') || el.classList.contains('active') || el.classList.contains('selected')) {
+        return true;
+      }
+    }
+    if (ACTIVE_RE.test(el.className || '')) return true;
+    return false;
+  }
+
+  function mainTabs() {
+    const all = $$('.reds-tab-item');
+    if (all.length >= 2) {
+      const main = all.filter(function (el) { return !el.closest('.tab-content-item'); });
+      return main.length ? main : all;
+    }
+    const list = $$('[role="tab"], .user-page [class*="tab-item"], .tab-link, [class*="tab-item"]');
+    const matched = list.filter(function (el) {
+      const t = (el.textContent || '').trim();
+      return /^(?:笔记|收藏|点赞|赞过)(?:\s*\d+)?$/.test(t);
+    });
+    if (matched.length >= 2) return matched;
+    return list.length ? list : [];
+  }
+
+  function getTabFromUrl() {
+    try {
+      const search = new URLSearchParams(location.search);
+      const tab = (search.get('tab') || search.get('tab_name') || search.get('type') || '').toLowerCase();
+      // 1. 精准匹配小红书官方地址栏参数（收藏：tab=fav&subTab=note；点赞：tab=liked；发布笔记：tab=note）
+      if (tab === 'fav' || tab === 'collect' || tab === 'board' || tab === 'star') return 'collect';
+      if (tab === 'liked' || tab === 'like' || tab === 'zan') return 'like';
+      if (tab === 'note' || tab === 'publish' || tab === 'post') return 'notes';
+
+      // 2. 泛匹配
+      if (/collect|fav|star|board|album/.test(tab)) return 'collect';
+      if (/like|praise|zan/.test(tab)) return 'like';
+      if (/note|publish|own|post|video/.test(tab)) return 'notes';
+
+      const hash = (location.hash || '').toLowerCase();
+      if (/collect|fav|star|board|album/.test(hash)) return 'collect';
+      if (/like|praise|zan/.test(hash)) return 'like';
+      if (/note|publish|own|post|video/.test(hash)) return 'notes';
+    } catch (e) {}
+    return '';
+  }
+
+  /**
+   * 严谨判定当前左侧小红书页面客观所展示的内容类型：
+   * 'collect' (收藏) | 'like' (赞过) | 'notes' (我的笔记) | '' (未识别)
+   * 
+   * 权威判定顺序：
+   * 1. 绝对第一标准：官方地址栏参数（URL Query Parameter，100% 精准可靠，不受任何 DOM 结构干扰）
+   *    - 收藏地址：?tab=fav&subTab=note
+   *    - 点赞地址：?tab=liked
+   *    - 个人发布笔记：?tab=note
+   * 2. 仅在 URL 未包含 tab 参数时（例如刚进入用户主页根路径 /user/profile/:id），才检查主 Tab 栏 DOM
+   */
+  function getPageActualTabType() {
+    // 1. 优先读取官方地址栏参数（最准确、最可靠的官方唯一依据）
+    const urlTab = getTabFromUrl();
+    if (urlTab) return urlTab;
+
+    // 2. 兜底：若 URL 未带 tab 参数，检查主 Tab 自身激活状态
+    const tabs = mainTabs();
+    for (let i = 0; i < tabs.length; i++) {
+      const el = tabs[i];
+      if (isTabItemActive(el)) {
+        const detected = detectTabFromText(el.textContent);
+        if (detected) return detected;
+      }
+    }
+
+    // 3. 根路径 /user/profile/:id 无 tab 参数时，小红书默认展现的是博主自己的发布笔记列表
+    if (PROFILE_RE.test(location.pathname) && !location.search) {
+      return 'notes';
+    }
+
+    return '';
+  }
+
+  function activeTabEl() {
+    const tabs = mainTabs();
+    for (let i = 0; i < tabs.length; i++) {
+      if (isTabItemActive(tabs[i])) return tabs[i];
+    }
+    return null;
+  }
+
+  function isOwnNotesPage() {
+    const tabType = getPageActualTabType();
+    if (tabType === 'notes') return true;
+    if (tabType === 'collect' || tabType === 'like') return false;
+    return false;
+  }
+
+  function syncModeWithActiveTab() {
+    const tabType = getPageActualTabType();
+    if (tabType === 'collect' && state.settings.mode !== 'uncollect') {
+      state.settings.mode = 'uncollect';
+      syncActiveModePointers();
+      saveSettings();
+      broadcastState();
+    } else if (tabType === 'like' && state.settings.mode !== 'unlike') {
+      state.settings.mode = 'unlike';
+      syncActiveModePointers();
+      saveSettings();
+      broadcastState();
+    }
+  }
+
+  function tabMatches(el, want) {
+    const text = ((el && el.textContent) || '').replace(/\s+/g, '');
+    const aliases = TAB_ALIASES[want] || [want];
+    return aliases.some(function (a) { return text.indexOf(a) !== -1; });
+  }
+
+  function currentTabLabel() {
+    const el = activeTabEl();
+    return el ? ((el.textContent || '').replace(/\s+/g, '').replace(/\d+/g, '')) : '';
+  }
+
+  /** 切完标签后卡片是异步渲染的，等它出现再扫，否则会稳定读到 0 篇 */
+  async function waitForCards(timeoutMs) {
+    const end = nowMs() + (timeoutMs || 6000);
+    while (nowMs() < end) {
+      if (scanCards().length > 0) return true;
+      await sleep(300);
+    }
+    return false;
+  }
+
+  async function ensureTab(want) {
+    const curTabType = getPageActualTabType();
+    // 关键优化：如果当前 URL 已经处于目标 Tab（如要收藏且当前是 collect，或要点赞且当前是 like），无需重复切换
+    if (want === '收藏' && curTabType === 'collect') return;
+    if ((want === '赞过' || want === '点赞') && curTabType === 'like') return;
+
+    const cur = activeTabEl();
+    if (cur && tabMatches(cur, want)) return;
+
+    const target = mainTabs().filter(function (el) { return tabMatches(el, want); })[0];
+    if (!target) return;
+    try { target.click(); } catch (e) {}
+
+    const deadline = nowMs() + 3000;
+    while (nowMs() < deadline) {
+      await sleep(250);
+      const a = activeTabEl();
+      if (a && tabMatches(a, want)) { await sleep(400); return; }
+    }
+    await sleep(400);
+  }
+
+  /* ============================ DOM：滚动加载 ============================ */
+
+  function findScrollContainer() {
+    const list = ['.feeds-container', '.user-page .feeds-container', '.note-list'];
+    for (let i = 0; i < list.length; i++) {
+      const el = $(list[i]);
+      if (el && el.scrollHeight > el.clientHeight + 60) return el;
+    }
+    return null;
+  }
+
+  function scrollStep() {
+    const el = findScrollContainer();
+    if (el) {
+      el.scrollTop = Math.min(el.scrollHeight, el.scrollTop + Math.max(200, Math.round(el.clientHeight * 0.85)));
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+    }
+    window.scrollBy(0, Math.max(300, Math.round(window.innerHeight * 0.85)));
+    return window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8;
+  }
+
+  function scrollToTop() {
+    const el = findScrollContainer();
+    if (el) el.scrollTop = 0;
+    window.scrollTo(0, 0);
+  }
+
+  async function collectCandidates() {
+    // 重新扫描读取时，从干净的集合开始，严格采集当前页面客观渲染的合法卡片
+    const acc = new Map();
+    const merge = function () {
+      scanCards().forEach(function (n) {
+        if (!acc.has(n.id)) acc.set(n.id, n);
+      });
+    };
+    const cap = Math.max(60, state.settings.maxPerRun * 3);
+    const budget = 40000;
+    const started = nowMs();
+
+    scrollToTop();
+    await sleep(400);
+    merge();
+    broadcastState();
+
+    let stall = 0;
+    while (nowMs() - started < budget && acc.size < cap) {
+      const before = acc.size;
+      const atBottom = scrollStep();
+      await sleep(750);
+      merge();
+      broadcastState();
+
+      if (acc.size > before) { stall = 0; continue; }
+      if (atBottom) {
+        stall++;
+        if (stall >= 2) break;
+        await sleep(800);
+        merge();
+      }
+    }
+    scrollToTop();
+    const result = Array.from(acc.values());
+    const m = state.settings.mode;
+    state.modeCache[m] = result;
+    syncActiveModePointers();
+    return result;
+  }
+
+  /* ============================ 前置校验 ============================ */
+
+  function hasOwnProfileMarker() {
+    const scope = $('.user-page') || $('.user-info') || $('#userPageContainer') || document.body;
+    if (!scope) return false;
+    const text = (scope.innerText || '').slice(0, 4000);
+    return EDIT_TEXT.test(text);
+  }
+
+  async function assertOwnProfile() {
+    const m = location.pathname.match(PROFILE_RE);
+    if (!m) throw new Error('请先打开你自己的主页（xiaohongshu.com/user/profile/…）');
+    const pageId = (m[1] || '').toLowerCase();
+
+    const me = await detectMyUserId();
+    if (pageId && me && me !== pageId) {
+      throw new Error('当前是别人的主页（' + pageId + '），已阻止操作');
+    }
+    if (me && me === pageId) return pageId;
+
+    if (hasOwnProfileMarker()) return pageId || me || 'self';
+    log('无法从页面确认这是你自己的主页，请自己确认后再开始', 'warn');
+    return pageId || me || 'self';
+  }
+
+  /* ============================ 搜索与选择 ============================ */
+
+  function visibleCandidates() {
+    const terms = C.parseKeywords(state.settings.keyword);
+    const m = state.settings.mode;
+    return state.candidates.filter(function (n) {
+      return !isProcessed(m, n.id) && C.matchKeywords(n, terms);
+    });
+  }
+
+  function noteById(id) {
+    for (let i = 0; i < state.candidates.length; i++) {
+      if (state.candidates[i].id === id) return state.candidates[i];
+    }
+    return null;
+  }
+
+  function selectedTargets() {
+    const mode = state.settings.mode;
+    const out = [];
+    const seen = new Set();
+    state.candidates.forEach(function (n) {
+      if (!state.selected.has(n.id) || isProcessed(mode, n.id)) return;
+      out.push(n);
+      seen.add(n.id);
+    });
+    state.selected.forEach(function (n, id) {
+      if (seen.has(id) || isProcessed(mode, id)) return;
+      out.push(n);
+    });
+    return out;
+  }
+
+  /**
+   * 勾选发生变化时的统一收尾：
+   * 1. 刷新小红书页面底部的已选条数浮动反馈栏
+   * 2. 刷新页面卡片的高亮与勾选状态
+   * 3. 广播给 Chrome 原生侧边栏以保持实时同步
+   */
+  function afterSelectionChange(feedback) {
+    updateSelectionFeedback(feedback);
+    refreshPageCards();
+    broadcastState();
+  }
+
+  function toggleSelection(note, shiftKey, ctx) {
+    if (!note || !note.id) return;
+    const mode = state.settings.mode;
+    const id = note.id;
+    if (isProcessed(mode, id)) return;
+
+    const order = (ctx && ctx.order) || visibleCandidates().map(function (n) { return n.id; });
+    const lookup = (ctx && ctx.lookup) || function (x) { return noteById(x) || { id: x, title: '' }; };
+
+    const idx = order.indexOf(id);
+    const anchorIdx = state.anchorId ? order.indexOf(state.anchorId) : -1;
+    const prevSize = state.selected.size;
+    const wasSel = state.selected.has(id);
+
+    if (shiftKey && anchorIdx !== -1 && idx !== -1 && anchorIdx !== idx) {
+      C.selectRange(order, anchorIdx, idx).forEach(function (x) {
+        if (isProcessed(mode, x)) return;
+        if (!state.selected.has(x)) state.selected.set(x, lookup(x));
+      });
+      state.anchorId = id;
+      const delta = state.selected.size - prevSize;
+      afterSelectionChange({
+        type: 'range',
+        delta: delta,
+        total: state.selected.size,
+        text: '✓ 已区间选择 ' + delta + ' 篇（当前共 ' + state.selected.size + ' 篇）',
+      });
+    } else if (wasSel) {
+      state.selected.delete(id);
+      state.anchorId = id;
+      afterSelectionChange({
+        type: 'remove',
+        title: note.title,
+        total: state.selected.size,
+        text: '已取消选择：' + titleOf(note) + '（当前共 ' + state.selected.size + ' 篇）',
+      });
+    } else {
+      state.selected.set(id, { id: id, title: note.title || '' });
+      state.anchorId = id;
+      afterSelectionChange({
+        type: 'add',
+        title: note.title,
+        total: state.selected.size,
+        text: '✓ 已勾选：' + titleOf(note) + '（当前共 ' + state.selected.size + ' 篇）',
+      });
+    }
+  }
+
+  function selectAllVisible(explicitIds) {
+    const mode = state.settings.mode;
+    const pool = Array.isArray(explicitIds)
+      ? explicitIds.map(function (id) { return state.candidates.get(id); }).filter(Boolean)
+      : visibleCandidates();
+    let added = 0;
+    pool.forEach(function (n) {
+      if (isProcessed(mode, n.id)) return;
+      if (!state.selected.has(n.id)) {
+        state.selected.set(n.id, { id: n.id, title: n.title || '' });
+        added++;
+      }
+    });
+    afterSelectionChange({
+      type: 'all',
+      total: state.selected.size,
+      text: '✓ 已全选当前可见笔记（当前共 ' + state.selected.size + ' 篇）',
+    });
+  }
+
+  function invertVisible(explicitIds) {
+    const mode = state.settings.mode;
+    const pool = Array.isArray(explicitIds)
+      ? explicitIds.map(function (id) { return state.candidates.get(id); }).filter(Boolean)
+      : visibleCandidates();
+    pool.forEach(function (n) {
+      if (isProcessed(mode, n.id)) return;
+      if (state.selected.has(n.id)) state.selected.delete(n.id);
+      else state.selected.set(n.id, { id: n.id, title: n.title || '' });
+    });
+    state.anchorId = null;
+    afterSelectionChange({
+      type: 'invert',
+      total: state.selected.size,
+      text: '已反选可见笔记（当前共 ' + state.selected.size + ' 篇）',
+    });
+  }
+
+  function clearSelection() {
+    state.selected.clear();
+    state.anchorId = null;
+    afterSelectionChange({
+      type: 'clear',
+      total: 0,
+      text: '已清空勾选',
+    });
+  }
+
+  /* ============================ 页面卡片勾选框 ============================ */
+
+  let pageStyleEl = null;
+  let pageTimer = null;
+
+  function ensurePageStyle() {
+    if (pageStyleEl && pageStyleEl.isConnected) return;
+    pageStyleEl = document.createElement('style');
+    pageStyleEl.id = 'rn-page-style';
+    pageStyleEl.textContent = STYLE;
+    (document.head || document.documentElement).appendChild(pageStyleEl);
+  }
+
+  function cardIdOf(el) {
+    if (!el) return '';
+    let href = '';
+    if (el.tagName === 'A' && el.getAttribute('href')) {
+      href = el.getAttribute('href');
+    }
+    if (!href && el.querySelector) {
+      const a = el.querySelector('a[href*="/explore/"], a.cover[href], a[href*="/discovery/item/"]');
+      if (a && a.getAttribute('href')) href = a.getAttribute('href');
+    }
+    if (!href && el.querySelector) {
+      const anyA = el.querySelector('a[href]');
+      if (anyA && anyA.getAttribute('href')) href = anyA.getAttribute('href');
+    }
+    return C.extractNoteId(href);
+  }
+
+  function pageCardIds() {
+    const ids = [];
+    const seen = new Set();
+    cardNodes().forEach(function (el) {
+      const id = cardIdOf(el);
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      ids.push(id);
+    });
+    return ids;
+  }
+
+  function pageNoteFor(id) {
+    const cards = cardNodes();
+    for (let i = 0; i < cards.length; i++) {
+      if (cardIdOf(cards[i]) !== id) continue;
+      const n = noteFromCard(cards[i]);
+      if (n) return n;
+    }
+    return null;
+  }
+
+  function ensureBadge(el) {
+    let badge = el.querySelector(':scope > .rn-pick');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'rn-pick';
+      badge.setAttribute('role', 'checkbox');
+      badge.setAttribute('tabindex', '0');
+      el.appendChild(badge);
+    }
+    return badge;
+  }
+
+  function isRelevantTab() {
+    const curType = getPageActualTabType();
+    if (curType === 'notes') return false;
+    if (curType === 'like' && state.settings.mode === 'unlike') return true;
+    if (curType === 'collect' && state.settings.mode === 'uncollect') return true;
+    const cur = activeTabEl();
+    if (!cur) return true;
+    return tabMatches(cur, C.MODES[state.settings.mode].tabLabel);
+  }
+
+  function refreshPageCards() {
+    if (!state.mounted) return;
+    if (!PROFILE_RE.test(location.pathname)) return;
+    ensurePageStyle();
+
+    document.documentElement.setAttribute('data-rn-tab', isRelevantTab() ? '1' : '0');
+
+    const mode = state.settings.mode;
+    const rawQuery = (state.settings.keyword || '').trim();
+    const terms = C.parseKeywords(rawQuery);
+    const cards = cardNodes();
+
+    for (let i = 0; i < cards.length; i++) {
+      const el = cards[i];
+      const id = cardIdOf(el);
+      if (!id) continue;
+
+      const n = noteById(id) || noteFromCard(el);
+      if (isOwnNote(n)) {
+        // 核心安全隔离：自己的原创笔记，绝对不加勾选框！
+        const oldBadge = el.querySelector(':scope > .rn-pick');
+        if (oldBadge) oldBadge.remove();
+        el.classList.remove('rn-card-sel', 'rn-card-dim', 'rn-card-done');
+        continue;
+      }
+
+      if (!el.dataset.rnPos) {
+        try {
+          const pos = getComputedStyle(el).position;
+          if (!pos || pos === 'static' || pos === 'initial') el.style.position = 'relative';
+        } catch (e) { /* 忽略 */ }
+        el.dataset.rnPos = '1';
+      }
+
+      const badge = ensureBadge(el);
+      if (el.dataset.rnId !== id) {
+        el.dataset.rnId = id;
+        el.classList.remove('rn-card-sel');
+        badge.classList.remove('rn-on', 'rn-done');
+      }
+      badge.dataset.rnId = id;
+
+      const sel = state.selected.has(id);
+      const done = isProcessed(mode, id);
+      const match = !rawQuery || C.matchKeywords(
+        { id: id, title: (noteById(id) || noteFromCard(el) || {}).title || '' },
+        terms
+      );
+
+      el.classList.toggle('rn-card-sel', sel && !done);
+      el.classList.toggle('rn-card-dim', !!rawQuery && !match);
+      badge.classList.toggle('rn-on', sel && !done);
+      badge.classList.toggle('rn-done', done);
+      badge.setAttribute('aria-checked', sel ? 'true' : 'false');
+      badge.title = done
+        ? '这篇已经处理过了'
+        : (sel ? '取消勾选（Shift 点击可区间多选）' : '勾选这篇（Shift 点击可区间多选）');
+    }
+  }
+
+  function clearPageCards() {
+    if (pageTimer) { clearInterval(pageTimer); pageTimer = null; }
+    try {
+      $$('.rn-pick').forEach(function (b) { b.remove(); });
+      cardNodes().forEach(function (el) {
+        el.classList.remove('rn-card-sel', 'rn-card-dim', 'rn-card-done');
+        if (el.dataset.rnPos === '1' && el.style && el.style.position === 'relative') el.style.position = '';
+        delete el.dataset.rnId;
+        delete el.dataset.rnPos;
+      });
+      document.documentElement.removeAttribute('data-rn-tab');
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function bindPageEvents() {
+    if (window.__rnPageBound) return;
+    window.__rnPageBound = true;
+
+    const stopIfBadge = function (ev) {
+      if (!(ev.target && ev.target.closest && ev.target.closest('.rn-pick'))) return false;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+      return true;
+    };
+
+    window.addEventListener('mousedown', stopIfBadge, true);
+
+    window.addEventListener('click', function (ev) {
+      if (!stopIfBadge(ev)) return;
+      const badge = ev.target.closest('.rn-pick');
+      const el = badge.closest('.note-item') || badge.parentElement;
+      const id = badge.dataset.rnId || (el && el.dataset.rnId);
+      if (!id) return;
+      if (!isRelevantTab()) {
+        const msg = '当前不在「' + C.MODES[state.settings.mode].tabLabel + '」列表，先切换标签页再勾选';
+        log(msg, 'warn');
+        showToast(msg);
+        return;
+      }
+      if (isProcessed(state.settings.mode, id)) {
+        log('这篇已经处理过了', 'warn');
+        showToast('这篇笔记已经处理过了');
+        return;
+      }
+
+      const note = noteFromCard(el);
+      if (!note || isOwnNote(note)) {
+        showToast('这是你发布的原创笔记，不支持取消收藏/点赞');
+        return;
+      }
+      note.id = id;
+      if (!noteById(id)) {
+        state.candidates.push(note);
+        log('已把「' + titleOf(note) + '」加入候选（页面上勾选的）', 'info');
+      }
+
+      toggleSelection(note, !!ev.shiftKey, {
+        order: pageCardIds(),
+        lookup: function (x) { return pageNoteFor(x) || noteById(x) || { id: x, title: '' }; },
+      });
+    }, true);
+
+    window.addEventListener('keydown', function (ev) {
+      if (stackState.open) {
+        if (ev.key === 'Escape') {
+          closeStackView();
+          return;
+        }
+        if (ev.key === 'ArrowLeft') {
+          prevStackCard();
+          return;
+        }
+        if (ev.key === 'ArrowRight') {
+          nextStackCard('right');
+          return;
+        }
+      }
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      const badge = ev.target && ev.target.closest ? ev.target.closest('.rn-pick') : null;
+      if (!badge) return;
+      ev.preventDefault();
+      badge.click();
+    }, true);
+
+    // 用户自主滚动浏览时，自动增量捕获新渲染的卡片并同步至侧边栏
+    let scrollTimer = null;
+    window.addEventListener('scroll', function () {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function () {
+        if (syncDomCardsToCandidates()) {
+          refreshPageCards();
+          broadcastState();
+        }
+      }, 150);
+    }, { passive: true });
+
+    // 监听 DOM 树变化（无限滚动异步插入卡片）
+    try {
+      let mutTimer = null;
+      const observer = new MutationObserver(function (mutations) {
+        let hasNewNodes = false;
+        for (let i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
+            hasNewNodes = true;
+            break;
+          }
+        }
+        if (hasNewNodes) {
+          clearTimeout(mutTimer);
+          mutTimer = setTimeout(function () {
+            if (syncDomCardsToCandidates()) {
+              refreshPageCards();
+              broadcastState();
+            }
+          }, 150);
+        }
+      });
+      observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    } catch (e) { /* 忽略 */ }
+
+    // 监听小红书页面主标签点击：根据被点击的 Tab 立即同步模式，切换对应独立缓存并延迟扫描
+    window.addEventListener('click', function (ev) {
+      const tab = ev.target && ev.target.closest && ev.target.closest('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]');
+      if (tab) {
+        const detected = detectTabFromText(tab.textContent);
+        if (detected) {
+          if (detected === 'like') {
+            state.settings.mode = 'unlike';
+            saveSettings();
+          } else if (detected === 'collect') {
+            state.settings.mode = 'uncollect';
+            saveSettings();
+          }
+
+          // 切换到目标模式的独立缓存指针并刷新界面
+          syncActiveModePointers();
+          state.anchorId = null;
+          clearPageCards();
+          broadcastState();
+
+          // 延迟扫描：等新 Tab 的卡片 DOM 渲染完成并合入对应缓存
+          setTimeout(function () {
+            if (syncDomCardsToCandidates()) broadcastState();
+            refreshPageCards();
+          }, 350);
+          setTimeout(function () {
+            if (syncDomCardsToCandidates()) broadcastState();
+            refreshPageCards();
+          }, 850);
+        }
+      }
+    }, true);
+  }
+
+  /* ============================ 页面浮动条反馈 ============================ */
+
+  let toastTimer = null;
+
+  function showToast(text) {
+    if (!state.els || !state.els.toast) return;
+    const t = state.els.toast;
+    t.textContent = text;
+    t.classList.add('rn-show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      t.classList.remove('rn-show');
+    }, 2200);
+  }
+
+  function updateSelectionFeedback(feedback) {
+    const selCount = state.selected.size;
+
+    if (state.els && state.els.count) {
+      state.els.count.textContent = String(selCount);
+      state.els.count.classList.remove('rn-bump');
+      void state.els.count.offsetWidth; // 触发 reflow 产生弹性跳动动画
+      state.els.count.classList.add('rn-bump');
+      setTimeout(function () {
+        if (state.els && state.els.count) state.els.count.classList.remove('rn-bump');
+      }, 200);
+    }
+
+    if (state.els && state.els.wrap) {
+      state.els.wrap.classList.toggle('rn-hidden', selCount === 0);
+    }
+
+    if (feedback && feedback.text) {
+      showToast(feedback.text);
+    }
+
+    setBadge(selCount > 0 ? String(selCount) : '');
+  }
+
+  function setBadge(text) {
+    try {
+      quietly(chrome.runtime.sendMessage({ type: 'RN_BADGE', text: text || '', color: '#FF2E4D' }));
+    } catch (e) { /* SW 可能已休眠，忽略 */ }
+  }
+
+  /* ============================ 叠卡速览模式引擎 ============================ */
+
+  const stackState = {
+    open: false,
+    list: [],
+    index: 0,
+    autoAdvance: true,
+    randomMode: false,
+    history: [],
+    working: false,
+    els: null,
+    filter: {
+      keyword: '',
+      tag: 'all',
+      explicitIds: null,
+    },
+  };
+
+  try {
+    const savedAuto = localStorage.getItem('rn:stack_auto_advance');
+    if (savedAuto !== null) stackState.autoAdvance = savedAuto === 'true';
+    const savedRandom = localStorage.getItem('rn:stack_random_mode');
+    if (savedRandom !== null) stackState.randomMode = savedRandom === 'true';
+  } catch (e) {}
+
+  /**
+   * 计算当前叠卡卡组的数据源（严格与右侧侧边栏展示的数据源对齐）
+   */
+  function getStackFilteredList() {
+    const curMode = state.settings.mode;
+    // 1. 如果有侧边栏精准同步过来的当前可见 ID 列表，优先严格对齐并保持顺序（排除已处理笔记）
+    if (Array.isArray(stackState.filter.explicitIds)) {
+      const candMap = new Map();
+      state.candidates.forEach(function (n) { candMap.set(n.id, n); });
+      return stackState.filter.explicitIds.map(function (id) {
+        return candMap.get(id);
+      }).filter(Boolean).filter(function (n) {
+        return !isProcessed(curMode, n.id);
+      });
+    }
+
+    // 2. 否则按关键词 + Tag 联合过滤当前模式的 candidates（排除已处理笔记）
+    let list = state.candidates.slice();
+    const kw = (stackState.filter.keyword || state.settings.keyword || '').trim();
+    if (kw) {
+      const terms = C.parseKeywords(kw);
+      list = list.filter(function (n) { return C.matchKeywords(n, terms); });
+    }
+    const tag = stackState.filter.tag;
+    if (tag && tag !== 'all') {
+      list = list.filter(function (n) {
+        const info = state.aiTags && state.aiTags[n.id];
+        if (!info) return false;
+        return info.decision === tag || info.category === tag;
+      });
+    }
+    return list.filter(function (n) {
+      return !isProcessed(curMode, n.id);
+    });
+  }
+
+  function openStackView(opts) {
+    if (!state.mounted) mount();
+
+    // 1. 核心安全校验：若停留在「我的笔记/发布」页面，坚决拦截并引导切换 Tab
+    const curTab = activeTabEl();
+    if (curTab && isOwnNotesTab(curTab)) {
+      const targetLabel = C.MODES[state.settings.mode].tabLabel;
+      try { ensureTab(targetLabel); } catch (e) {}
+      const msg = '当前在「我的笔记」页面（自己发布的原创笔记不可操作），请先在小红书页面切换至「' + targetLabel + '」列表';
+      log(msg, 'warn');
+      showToast(msg);
+      return { ok: false, count: 0, reason: msg };
+    }
+
+    // 2. 清洗可能残留的原创笔记
+    state.candidates = state.candidates.filter(function (n) { return !isOwnNote(n); });
+
+    // 3. 在合规的「收藏」或「赞过」Tab 增量同步页面卡片
+    syncDomCardsToCandidates();
+
+    // 4. 兜底扫描：若候选集仍为空且并未处于笔记Tab，扫描当前页面呈现的合法卡片
+    if (!state.candidates.length) {
+      const scanned = scanCards();
+      if (scanned && scanned.length) {
+        state.candidates = scanned;
+        refreshPageCards();
+        broadcastState();
+      }
+    }
+
+    // 5. 更新过滤规则（与右侧侧边栏传入的搜索、tag与ids完全同步）
+    if (opts) {
+      if (typeof opts.keyword === 'string') {
+        stackState.filter.keyword = opts.keyword.trim();
+        state.settings.keyword = stackState.filter.keyword;
+      }
+      if (typeof opts.tag === 'string') {
+        stackState.filter.tag = opts.tag;
+      }
+      if (Array.isArray(opts.ids)) {
+        stackState.filter.explicitIds = opts.ids.slice();
+      } else if (opts.ids === null) {
+        stackState.filter.explicitIds = null;
+      }
+    }
+
+    const list = getStackFilteredList();
+
+    if (!list.length) {
+      const emptyMsg = (stackState.filter.tag && stackState.filter.tag !== 'all')
+        ? '未找到匹配标签「' + stackState.filter.tag + '」的笔记'
+        : (stackState.filter.keyword
+            ? '未找到匹配「' + stackState.filter.keyword + '」的笔记'
+            : '当前模式下暂无已缓存笔记，请滚动小红书页面加载');
+      log(emptyMsg, 'warn');
+      showToast(emptyMsg);
+      return { ok: false, count: 0, reason: emptyMsg };
+    }
+
+    stackState.list = list;
+    stackState.history = [];
+    stackState.open = true;
+    stackState.working = false;
+
+    if (stackState.randomMode && list.length > 1) {
+      stackState.index = Math.floor(Math.random() * list.length);
+    } else {
+      stackState.index = 0;
+    }
+
+    // 展开宿主容器至全视口，保证模态框与阴影遮罩可完整呈现并捕获交互
+    if (state.els && state.els.host) {
+      state.els.host.style.width = '100vw';
+      state.els.host.style.height = '100vh';
+      state.els.host.style.pointerEvents = 'auto';
+    }
+
+    try {
+      chrome.storage.local.get([KEY_AI_TAGS], function (res) {
+        if (res && res[KEY_AI_TAGS]) {
+          state.aiTags = res[KEY_AI_TAGS];
+          if (stackState.open) renderStackCard();
+        }
+      });
+    } catch (e) {}
+
+    if (stackState.els && stackState.els.overlay) {
+      stackState.els.overlay.classList.add('rn-open');
+    }
+    renderStackCard();
+    return { ok: true, count: list.length };
+  }
+
+  function closeStackView() {
+    stackState.open = false;
+    stackState.working = false;
+    if (stackState.els && stackState.els.overlay) {
+      stackState.els.overlay.classList.remove('rn-open');
+    }
+    // 恢复宿主容器为零尺寸，彻底避免阻挡页面底层交互
+    if (state.els && state.els.host) {
+      state.els.host.style.width = '0';
+      state.els.host.style.height = '0';
+      state.els.host.style.pointerEvents = 'none';
+    }
+    refreshPageCards();
+  }
+
+  function syncStackListToFilter(filterPatch) {
+    if (!stackState.open) return;
+
+    if (filterPatch) {
+      if (typeof filterPatch.keyword === 'string') {
+        stackState.filter.keyword = filterPatch.keyword.trim();
+        state.settings.keyword = stackState.filter.keyword;
+      }
+      if (typeof filterPatch.tag === 'string') {
+        stackState.filter.tag = filterPatch.tag;
+      }
+      if (Array.isArray(filterPatch.ids)) {
+        stackState.filter.explicitIds = filterPatch.ids.slice();
+      } else if (filterPatch.ids === null) {
+        stackState.filter.explicitIds = null;
+      }
+    }
+
+    const currentNote = stackState.list[stackState.index];
+    const filtered = getStackFilteredList();
+    stackState.list = filtered;
+
+    if (filtered.length === 0) {
+      stackState.index = 0;
+      renderStackCard();
+      return;
+    }
+
+    // 若当前正在查看的卡片依然在筛选列表中，保持在此卡片
+    let targetIdx = 0;
+    if (currentNote && currentNote.id) {
+      for (let i = 0; i < filtered.length; i++) {
+        if (filtered[i].id === currentNote.id) { targetIdx = i; break; }
+      }
+    }
+    stackState.index = targetIdx;
+    renderStackCard();
+  }
+
+  const SVG_HEART_FILLED = '<svg viewBox="0 0 24 24" width="22" height="22" fill="#ff2442"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+  const SVG_HEART_OUTLINE = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>';
+  const SVG_STAR_FILLED = '<svg viewBox="0 0 24 24" width="22" height="22" fill="#ffb800"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
+  const SVG_STAR_OUTLINE = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>';
+
+  function getNoteStatus(note) {
+    if (!note || !note.id) return { liked: false, collected: false };
+
+    let liked;
+    if (typeof note._liked === 'boolean') {
+      liked = note._liked;
+    } else if (isProcessed('unlike', note.id)) {
+      liked = false;
+    } else if (state.modeCache && state.modeCache.unlike && state.modeCache.unlike.some(function (n) { return n.id === note.id; })) {
+      liked = true;
+    } else {
+      liked = (state.settings.mode === 'unlike');
+    }
+
+    let collected;
+    if (typeof note._collected === 'boolean') {
+      collected = note._collected;
+    } else if (isProcessed('uncollect', note.id)) {
+      collected = false;
+    } else if (state.modeCache && state.modeCache.uncollect && state.modeCache.uncollect.some(function (n) { return n.id === note.id; })) {
+      collected = true;
+    } else {
+      collected = (state.settings.mode === 'uncollect');
+    }
+
+    return { liked: liked, collected: collected };
+  }
+
+  function renderStackCard() {
+    if (!stackState.els) return;
+    const total = stackState.list.length;
+
+    // 当筛选结果为空时的提示卡片，保持叠卡不崩溃并明确指示原因
+    if (total === 0) {
+      stackState.els.counter.textContent = '第 0 / 0 篇';
+      stackState.els.img.removeAttribute('src');
+      stackState.els.img.style.display = 'none';
+      stackState.els.empty.textContent = '🎉';
+      stackState.els.empty.style.display = 'block';
+      stackState.els.status.textContent = '已无待处理笔记';
+      stackState.els.status.classList.remove('rn-pill-done');
+      if (stackState.els.btnOpen) stackState.els.btnOpen.style.display = 'none';
+
+      let hintReason = '';
+      if (stackState.filter && stackState.filter.tag && stackState.filter.tag !== 'all') {
+        hintReason = '标签「' + stackState.filter.tag + '」';
+      }
+      if (stackState.filter && stackState.filter.keyword) {
+        hintReason += (hintReason ? ' + ' : '') + '搜索「' + stackState.filter.keyword + '」';
+      }
+
+      stackState.els.title.textContent = hintReason
+        ? '当前' + hintReason + '下笔记已全部处理完成'
+        : '当前模式下已无待处理笔记';
+      stackState.els.author.textContent = '可在右侧侧边栏切换 Tab、Tag 标签或修改搜索词';
+      stackState.els.id.textContent = '';
+      stackState.els.btnPrev.disabled = true;
+      stackState.els.btnNext.disabled = true;
+      const likeBtn = stackState.els.btnLike || stackState.els.btnUnlike;
+      const collectBtn = stackState.els.btnCollect || stackState.els.btnUncollect;
+      if (likeBtn) likeBtn.disabled = true;
+      if (collectBtn) collectBtn.disabled = true;
+      if (stackState.els.layer1) stackState.els.layer1.style.display = 'none';
+      if (stackState.els.layer2) stackState.els.layer2.style.display = 'none';
+      return;
+    }
+
+    if (stackState.index < 0) stackState.index = 0;
+    if (stackState.index >= total) stackState.index = total - 1;
+
+    const idx = stackState.index;
+    const note = stackState.list[idx];
+
+    // 更新序号指示（带上当前筛选的 Tag 或搜索词）
+    let filterHint = '';
+    if (stackState.filter && stackState.filter.tag && stackState.filter.tag !== 'all') {
+      filterHint = ' · ' + stackState.filter.tag;
+    } else if (stackState.filter && stackState.filter.keyword) {
+      filterHint = ' · "' + stackState.filter.keyword + '"';
+    }
+
+    if (stackState.randomMode) {
+      stackState.els.counter.textContent = '🎲 随机 · 第 ' + (idx + 1) + ' / ' + total + ' 篇' + filterHint;
+    } else {
+      stackState.els.counter.textContent = '第 ' + (idx + 1) + ' / ' + total + ' 篇' + filterHint;
+    }
+
+    // 更新大图封面
+    if (note.cover) {
+      stackState.els.img.src = note.cover;
+      stackState.els.img.style.display = 'block';
+      stackState.els.empty.style.display = 'none';
+    } else {
+      stackState.els.img.removeAttribute('src');
+      stackState.els.img.style.display = 'none';
+      stackState.els.empty.textContent = '🎴';
+      stackState.els.empty.style.display = 'block';
+    }
+
+    // 更新查看原文链接按钮
+    const noteUrl = note.id ? ('https://www.xiaohongshu.com/explore/' + note.id) : '';
+    if (stackState.els.btnOpen) {
+      if (noteUrl) {
+        stackState.els.btnOpen.href = noteUrl;
+        stackState.els.btnOpen.style.display = 'inline-flex';
+      } else {
+        stackState.els.btnOpen.style.display = 'none';
+      }
+    }
+
+    // 更新文本信息
+    stackState.els.title.textContent = note.title || '未命名笔记';
+    if (noteUrl) {
+      stackState.els.title.title = '点击可在新标签页查看笔记原文（' + noteUrl + '）';
+    } else {
+      stackState.els.title.removeAttribute('title');
+    }
+    stackState.els.author.textContent = note.author ? ('@' + note.author) : '';
+    const aiTag = state.aiTags && state.aiTags[note.id];
+    if (aiTag) {
+      const decMap = {
+        '时效过期': '⚠️ 时效过期',
+        '营销广告': '📢 营销推广',
+        '干货保值': '💡 干货保值',
+        '普通浏览': '☕ 普通浏览',
+      };
+      const decText = decMap[aiTag.decision] || aiTag.decision || '';
+      const catText = aiTag.category ? ('[' + aiTag.category + '] ') : '';
+      const reasonText = aiTag.reason ? (' · ' + aiTag.reason) : '';
+      stackState.els.id.textContent = catText + decText + reasonText;
+    } else {
+      stackState.els.id.textContent = note.id ? ('ID: ' + note.id) : '';
+    }
+
+    // 状态判定
+    const st = getNoteStatus(note);
+    if (!st.liked && !st.collected) {
+      stackState.els.status.textContent = '已取消点赞 & 收藏';
+      stackState.els.status.classList.add('rn-pill-done');
+    } else if (st.liked && st.collected) {
+      stackState.els.status.textContent = '已点赞 ❤️ · 已收藏 ⭐';
+      stackState.els.status.classList.remove('rn-pill-done');
+    } else if (st.liked) {
+      stackState.els.status.textContent = '已点赞 ❤️ · 未收藏';
+      stackState.els.status.classList.toggle('rn-pill-done', state.settings.mode === 'uncollect');
+    } else {
+      stackState.els.status.textContent = '已收藏 ⭐ · 未点赞';
+      stackState.els.status.classList.toggle('rn-pill-done', state.settings.mode === 'unlike');
+    }
+
+    // 更新导航按钮状态
+    if (stackState.randomMode) {
+      stackState.els.btnPrev.disabled = (!stackState.history || stackState.history.length === 0) && idx <= 0;
+      stackState.els.btnNext.disabled = total <= 1;
+      stackState.els.btnNext.innerHTML = '随机下一个 <span>🎲</span>';
+      stackState.els.btnNext.title = '随机下一张 (→)';
+    } else {
+      stackState.els.btnPrev.disabled = idx <= 0;
+      stackState.els.btnNext.disabled = idx >= total - 1;
+      stackState.els.btnNext.innerHTML = '下一个 <span>➡</span>';
+      stackState.els.btnNext.title = '下一张 (→)';
+    }
+
+    // 更新两个原生风格的状态图标按钮（点赞红心 / 收藏黄星）
+    const likeBtn = stackState.els.btnLike || stackState.els.btnUnlike;
+    if (likeBtn) {
+      likeBtn.disabled = stackState.working;
+      likeBtn.classList.toggle('rn-active-liked', st.liked);
+      likeBtn.title = st.liked ? '已点赞（点击取消点赞）' : '未点赞（点击点赞）';
+      likeBtn.innerHTML = st.liked ? SVG_HEART_FILLED : SVG_HEART_OUTLINE;
+    }
+
+    const collectBtn = stackState.els.btnCollect || stackState.els.btnUncollect;
+    if (collectBtn) {
+      collectBtn.disabled = stackState.working;
+      collectBtn.classList.toggle('rn-active-collected', st.collected);
+      collectBtn.title = st.collected ? '已收藏（点击取消收藏）' : '未收藏（点击收藏）';
+      collectBtn.innerHTML = st.collected ? SVG_STAR_FILLED : SVG_STAR_OUTLINE;
+    }
+
+    // 参差错落下层卡片视觉呈现
+    const nextIdx1 = stackState.randomMode ? (idx + 1) % total : idx + 1;
+    const nextIdx2 = stackState.randomMode ? (idx + 2) % total : idx + 2;
+
+    if (stackState.els.layer1) {
+      if (total >= 2 && stackState.list[nextIdx1] && nextIdx1 !== idx) {
+        const next1 = stackState.list[nextIdx1];
+        stackState.els.layer1.style.display = 'block';
+        if (next1.cover) {
+          stackState.els.layer1.style.backgroundImage = 'linear-gradient(rgba(26,26,36,0.65), rgba(26,26,36,0.88)), url(' + next1.cover + ')';
+        } else {
+          stackState.els.layer1.style.backgroundImage = 'none';
+        }
+      } else {
+        stackState.els.layer1.style.display = 'none';
+      }
+    }
+
+    if (stackState.els.layer2) {
+      if (total >= 3 && stackState.list[nextIdx2] && nextIdx2 !== idx) {
+        const next2 = stackState.list[nextIdx2];
+        stackState.els.layer2.style.display = 'block';
+        if (next2.cover) {
+          stackState.els.layer2.style.backgroundImage = 'linear-gradient(rgba(20,20,28,0.7), rgba(20,20,28,0.92)), url(' + next2.cover + ')';
+        } else {
+          stackState.els.layer2.style.backgroundImage = 'none';
+        }
+      } else {
+        stackState.els.layer2.style.display = 'none';
+      }
+    }
+  }
+
+  function nextStackCard(direction) {
+    if (stackState.animating) return;
+    const total = stackState.list.length;
+    if (total <= 1) {
+      showToast('当前只有 1 篇笔记');
+      return;
+    }
+    if (!stackState.randomMode && stackState.index >= total - 1) {
+      showToast('已是最后一张笔记');
+      return;
+    }
+
+    stackState.animating = true;
+    const cardMain = stackState.els.cardMain;
+    const deck = stackState.els.deck || cardMain.parentElement;
+
+    // 1. 克隆当前卡片作为飞离幽灵层，保证上一张卡片自然向左飞走
+    const ghost = cardMain.cloneNode(true);
+    ghost.removeAttribute('id');
+    const childIds = ghost.querySelectorAll('[id]');
+    for (let i = 0; i < childIds.length; i++) childIds[i].removeAttribute('id');
+    ghost.classList.add('rn-card-ghost');
+    deck.appendChild(ghost);
+
+    // 记录历史供 prevStackCard 回溯（以 note.id 记录，避免删除卡片后索引偏移）
+    if (!stackState.history) stackState.history = [];
+    const currentNote = stackState.list[stackState.index];
+    if (currentNote && currentNote.id) {
+      stackState.history.push(currentNote.id);
+      if (stackState.history.length > 100) stackState.history.shift();
+    }
+
+    // 2. 计算下一张索引
+    if (stackState.randomMode) {
+      let rand;
+      do {
+        rand = Math.floor(Math.random() * total);
+      } while (rand === stackState.index && total > 1);
+      stackState.index = rand;
+    } else {
+      stackState.index++;
+    }
+    renderStackCard();
+
+    // 3. 让克隆的旧卡片朝左侧平滑甩出并渐隐
+    void ghost.offsetWidth; // 触发 reflow 确保起始帧就绪
+    ghost.classList.add('rn-ghost-fly-out');
+
+    setTimeout(function () {
+      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      stackState.animating = false;
+    }, 280);
+  }
+
+  function prevStackCard() {
+    if (stackState.animating) return;
+    const total = stackState.list.length;
+    if (total === 0) return;
+
+    let targetIdx = -1;
+    while (stackState.history && stackState.history.length > 0) {
+      const prevId = stackState.history.pop();
+      const found = stackState.list.findIndex(function (n) { return n.id === prevId; });
+      if (found !== -1 && found !== stackState.index) {
+        targetIdx = found;
+        break;
+      }
+    }
+    if (targetIdx === -1 && stackState.index > 0) {
+      targetIdx = stackState.index - 1;
+    }
+
+    if (targetIdx === -1 || targetIdx === stackState.index) {
+      showToast('已是第一张笔记');
+      return;
+    }
+
+    stackState.animating = true;
+    const cardMain = stackState.els.cardMain;
+
+    // 1. 将主卡片先无过渡定位在左侧屏幕外
+    cardMain.classList.remove('rn-enter-active');
+    cardMain.classList.add('rn-entering-from-left');
+
+    // 2. 渲染上一篇卡片的内容
+    stackState.index = targetIdx;
+    renderStackCard();
+
+    // 3. 强制重绘，锁定左侧起始帧
+    void cardMain.offsetWidth;
+
+    // 4. 下一帧加上过渡类，从左侧平滑滑入中央归位
+    requestAnimationFrame(function () {
+      cardMain.classList.remove('rn-entering-from-left');
+      cardMain.classList.add('rn-enter-active');
+    });
+
+    setTimeout(function () {
+      cardMain.classList.remove('rn-enter-active');
+      stackState.animating = false;
+    }, 320);
+  }
+
+  /** 处理叠卡中笔记已被取消/处理后的平滑飞离与列表剔除 */
+  function handleCardProcessedFlyOut(processedNoteId) {
+    if (!stackState.open) return;
+    const cardMain = stackState.els && stackState.els.cardMain;
+    const deck = stackState.els && (stackState.els.deck || (cardMain && cardMain.parentElement));
+
+    // 幽灵卡片平滑向左甩出动画
+    if (cardMain && deck) {
+      const ghost = cardMain.cloneNode(true);
+      ghost.removeAttribute('id');
+      const childIds = ghost.querySelectorAll('[id]');
+      for (let i = 0; i < childIds.length; i++) childIds[i].removeAttribute('id');
+      ghost.classList.add('rn-card-ghost');
+      deck.appendChild(ghost);
+      void ghost.offsetWidth;
+      ghost.classList.add('rn-ghost-fly-out');
+      setTimeout(function () {
+        if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      }, 280);
+    }
+
+    // 从叠卡列表彻底剔除已处理的笔记，确保不论在列表还是叠卡都不再出现
+    stackState.list = stackState.list.filter(function (n) { return n.id !== processedNoteId; });
+
+    // 从历史记录中剔除已处理笔记，确保「上一个」绝不回溯到已处理的笔记
+    if (stackState.history) {
+      stackState.history = stackState.history.filter(function (histId) { return histId !== processedNoteId; });
+    }
+
+    const newTotal = stackState.list.length;
+    if (newTotal === 0) {
+      stackState.index = 0;
+    } else if (stackState.randomMode) {
+      stackState.index = Math.floor(Math.random() * newTotal);
+    } else if (stackState.index >= newTotal) {
+      stackState.index = newTotal - 1;
+    }
+
+    renderStackCard();
+  }
+
+  async function toggleStackAction(type) {
+    if (stackState.working) return;
+    const note = stackState.list[stackState.index];
+    if (!note || !note.id) return;
+
+    const st = getNoteStatus(note);
+
+    if (type === 'like') {
+      const willUnlike = st.liked;
+      const mode = 'unlike';
+      const phase = willUnlike ? 'do' : 'undo';
+
+      stackState.working = true;
+      renderStackCard();
+
+      try {
+        const res = await callWrite(mode, phase, note.id);
+        if (C.isRiskResponse(res.payload, res.status)) {
+          log('⛔ 命中风控，请暂停操作：' + C.describeError(res.payload, res.status), 'err');
+          showToast('命中风控提示，请稍候再试');
+          return;
+        }
+
+        if (C.isSuccess(res.payload)) {
+          if (willUnlike) {
+            note._liked = false;
+            markProcessed('unlike', note.id);
+            removeCandidate('unlike', note.id);
+            state.selected.delete(note.id);
+            pushHistory({ id: note.id, title: note.title, mode: 'unlike', ts: nowMs() });
+            log('已取消点赞：' + titleOf(note), 'ok');
+            showToast('已取消点赞');
+
+            // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
+            handleCardProcessedFlyOut(note.id);
+          } else {
+            note._liked = true;
+            unmarkProcessed('unlike', note.id);
+            log('已重新点赞：' + titleOf(note), 'ok');
+            showToast('已点赞 ❤️');
+          }
+          broadcastState();
+          updateSelectionFeedback();
+          refreshPageCards();
+        } else {
+          const errText = C.describeError(res.payload, res.status);
+          log('操作失败：' + errText, 'err');
+          showToast('失败：' + errText);
+        }
+      } catch (e) {
+        log('操作出错：' + ((e && e.message) || e), 'err');
+        showToast('操作出错');
+      } finally {
+        stackState.working = false;
+        renderStackCard();
+      }
+    } else if (type === 'collect') {
+      const willUncollect = st.collected;
+      const mode = 'uncollect';
+      const phase = willUncollect ? 'do' : 'undo';
+
+      stackState.working = true;
+      renderStackCard();
+
+      try {
+        const res = await callWrite(mode, phase, note.id);
+        if (C.isRiskResponse(res.payload, res.status)) {
+          log('⛔ 命中风控，请暂停操作：' + C.describeError(res.payload, res.status), 'err');
+          showToast('命中风控提示，请稍候再试');
+          return;
+        }
+
+        if (C.isSuccess(res.payload)) {
+          if (willUncollect) {
+            note._collected = false;
+            markProcessed('uncollect', note.id);
+            removeCandidate('uncollect', note.id);
+            state.selected.delete(note.id);
+            pushHistory({ id: note.id, title: note.title, mode: 'uncollect', ts: nowMs() });
+            log('已取消收藏：' + titleOf(note), 'ok');
+            showToast('已取消收藏');
+
+            // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
+            handleCardProcessedFlyOut(note.id);
+          } else {
+            note._collected = true;
+            unmarkProcessed('uncollect', note.id);
+            log('已重新收藏：' + titleOf(note), 'ok');
+            showToast('已收藏 ⭐');
+          }
+          broadcastState();
+          updateSelectionFeedback();
+          refreshPageCards();
+        } else {
+          const errText = C.describeError(res.payload, res.status);
+          log('操作失败：' + errText, 'err');
+          showToast('失败：' + errText);
+        }
+      } catch (e) {
+        log('操作出错：' + ((e && e.message) || e), 'err');
+        showToast('操作出错');
+      } finally {
+        stackState.working = false;
+        renderStackCard();
+      }
+    }
+  }
+
+  function executeStackAction(mode) {
+    if (mode === 'unlike') return toggleStackAction('like');
+    return toggleStackAction('collect');
+  }
+
+  /* ============================ 运行引擎 ============================ */
+
+  async function startRun() {
+    if (state.running) return;
+    if (!state.mounted) mount();
+
+    const s = state.settings;
+    const M = C.MODES[s.mode];
+
+    try {
+      await assertOwnProfile();
+      await ensureTab(M.tabLabel);
+
+      let scannedNow = false;
+      if (!state.candidates.length) {
+        log('正在读取「' + M.tabLabel + '」列表…');
+        await waitForCards(6000);
+        state.candidates = await collectCandidates();
+        if (!state.candidates.length) {
+          log('没读到笔记卡片：如果当前停在「专辑」子页，请切到「笔记」子页再试', 'err');
+          return;
+        }
+        log('读到 ' + state.candidates.length + ' 篇笔记', 'ok');
+        refreshPageCards();
+        scannedNow = true;
+      }
+
+      const queue = selectedTargets();
+      if (!queue.length) {
+        const tip = scannedNow
+          ? '已读到 ' + state.candidates.length + ' 篇，但还没有勾选：在页面上逐条勾选（或侧边栏点「全选命中」）后再开始'
+          : '还没有勾选要处理的笔记：直接在小红书页面点卡片勾选，或在侧边栏点「全选命中」';
+        log(tip, 'warn');
+        showToast('请先勾选笔记，再点开始');
+        return;
+      }
+
+      const planned = Math.min(queue.length, s.maxPerRun);
+      const lines = [
+        '即将执行：' + M.verb,
+        '',
+        '已勾选 ' + queue.length + ' 篇，本次最多执行 ' + planned + ' 篇',
+        '请求间隔 ' + s.minDelay + '–' + s.maxDelay + ' ms',
+      ];
+      const preview = queue.slice(0, 3).map(function (n) { return '· ' + titleOf(n); });
+      if (preview.length) lines.push('', '前几条：', preview.join('\n'));
+      if (s.cooldownEvery > 0) {
+        lines.push('每 ' + s.cooldownEvery + ' 篇冷却 ' + Math.round(s.cooldownMs / 1000) + ' 秒');
+      }
+      lines.push('', '确定开始？');
+      if (!window.confirm(lines.join('\n'))) {
+        log('已取消本次运行', 'warn');
+        return;
+      }
+
+      state.running = true;
+      state.stopRequested = false;
+      state.stats = { ok: 0, fail: 0, risk: false, startedAt: nowMs(), total: planned };
+      broadcastState();
+
+      let streak = 0;
+      for (let i = 0; i < queue.length; i++) {
+        if (state.stopRequested) { log('已手动停止', 'warn'); break; }
+        const done = state.stats.ok + state.stats.fail;
+        if (done >= s.maxPerRun) {
+          log('已达单次上限 ' + s.maxPerRun + ' 篇，停止（避免风控）', 'warn');
+          break;
+        }
+
+        const note = queue[i];
+        if (isProcessed(s.mode, note.id)) continue;
+
+        if (C.shouldCooldown(done, s.cooldownEvery)) {
+          log('批次冷却 ' + Math.round(s.cooldownMs / 1000) + ' 秒…', 'warn');
+          if (!(await interruptibleSleep(s.cooldownMs))) { log('冷却中被停止', 'warn'); break; }
+        }
+
+        if (!(await interruptibleSleep(C.delayBetween(s.minDelay, s.maxDelay)))) {
+          log('已被停止', 'warn');
+          break;
+        }
+
+        state.stats.index = i;
+        broadcastState();
+
+        try {
+          const res = await callWrite(s.mode, 'do', note.id);
+
+          if (C.isRiskResponse(res.payload, res.status)) {
+            state.stats.risk = true;
+            log('⛔ 命中风控，已立即停止：' + C.describeError(res.payload, res.status), 'err');
+            log('建议：至少等 30 分钟，把间隔调到 3000–6000ms、单次降到 10–20 篇再试', 'warn');
+            break;
+          }
+
+          if (C.isSuccess(res.payload)) {
+            streak = 0;
+            state.stats.ok++;
+            markProcessed(s.mode, note.id);
+            removeCandidate(s.mode, note.id);
+            state.selected.delete(note.id);
+            pushHistory({ id: note.id, title: note.title, mode: s.mode, ts: nowMs() });
+            log('[' + (done + 1) + '/' + planned + '] 已' + M.verb + '：' + titleOf(note), 'ok');
+          } else {
+            streak++;
+            state.stats.fail++;
+            log('[' + (done + 1) + '/' + planned + '] 失败：' + titleOf(note) + ' — ' + C.describeError(res.payload, res.status), 'err');
+            if (streak >= 5) {
+              log('连续失败 5 次，先停下排查（可能是接口字段或登录态变了，点「诊断」看看）', 'err');
+              break;
+            }
+          }
+        } catch (e) {
+          streak++;
+          state.stats.fail++;
+          log('[' + (done + 1) + '/' + planned + '] 出错：' + titleOf(note) + ' — ' + ((e && e.message) || e), 'err');
+          if (streak >= 5) {
+            log('连续出错 5 次，已停止', 'err');
+            break;
+          }
+        }
+
+        broadcastState();
+        updateSelectionFeedback();
+        refreshPageCards();
+      }
+    } catch (e) {
+      log('中断：' + ((e && e.message) || e), 'err');
+    } finally {
+      const wasRunning = state.running;
+      state.running = false;
+      state.stopRequested = false;
+      updateSelectionFeedback();
+      refreshPageCards();
+      broadcastState();
+      if (wasRunning) {
+        log('本次结束：' + C.summarize({
+          ok: state.stats.ok,
+          fail: state.stats.fail,
+          risk: state.stats.risk,
+          elapsedMs: nowMs() - state.stats.startedAt,
+        }), state.stats.risk ? 'err' : 'ok');
+      }
+    }
+  }
+
+  async function scanOnly() {
+    if (state.running) return;
+    if (!state.mounted) mount();
+    const M = C.MODES[state.settings.mode];
+    try {
+      await assertOwnProfile();
+      await ensureTab(M.tabLabel);
+      log('开始读取「' + M.tabLabel + '」列表…');
+      await waitForCards(6000);
+      state.candidates = await collectCandidates();
+      broadcastState();
+      if (!state.candidates.length) {
+        log('没读到笔记卡片：确认当前在「收藏/赞过 → 笔记」子页（不是「专辑」），并且列表不是空的', 'err');
+        return;
+      }
+      refreshPageCards();
+      log('扫描完成：读到 ' + state.candidates.length + ' 篇。可以直接在页面上点卡片左上角勾选，或在侧边栏中搜索后「全选命中」', 'ok');
+    } catch (e) {
+      log('扫描失败：' + ((e && e.message) || e), 'err');
+    }
+  }
+
+  async function undoRun() {
+    if (state.running) return;
+    const mode = state.settings.mode;
+    const M = C.MODES[mode];
+    const items = state.history.filter(function (h) { return h.mode === mode && !h.undone; });
+    if (!items.length) {
+      log('当前模式（' + M.label + '）没有可撤销的记录', 'warn');
+      return;
+    }
+    if (!window.confirm('将' + M.undoVerb + '最近 ' + items.length + ' 条记录，确定？')) return;
+
+    state.running = true;
+    state.stopRequested = false;
+    state.stats = { ok: 0, fail: 0, risk: false, startedAt: nowMs(), total: items.length };
+    broadcastState();
+
+    try {
+      for (let i = 0; i < items.length; i++) {
+        if (state.stopRequested) break;
+        if (i > 0 && !(await interruptibleSleep(C.delayBetween(state.settings.minDelay, state.settings.maxDelay)))) break;
+
+        const h = items[i];
+        try {
+          const res = await callWrite(mode, 'undo', h.id);
+          if (C.isRiskResponse(res.payload, res.status)) {
+            state.stats.risk = true;
+            log('⛔ 撤销时命中风控，已停止：' + C.describeError(res.payload, res.status), 'err');
+            break;
+          }
+          if (C.isSuccess(res.payload)) {
+            state.stats.ok++;
+            h.undone = true;
+            h.undoneAt = nowMs();
+            unmarkProcessed(mode, h.id);
+            log('[' + (i + 1) + '/' + items.length + '] 已' + M.undoVerb + '：' + (h.title || h.id), 'ok');
+          } else {
+            state.stats.fail++;
+            log('[' + (i + 1) + '/' + items.length + '] ' + M.undoVerb + '失败：' + (h.title || h.id) + ' — ' + C.describeError(res.payload, res.status), 'err');
+          }
+        } catch (e) {
+          state.stats.fail++;
+          log('[' + (i + 1) + '/' + items.length + '] 出错：' + ((e && e.message) || e), 'err');
+        }
+        broadcastState();
+        await saveHistory();
+      }
+    } finally {
+      state.running = false;
+      state.stopRequested = false;
+      broadcastState();
+      log('撤销结束：' + C.summarize({ ok: state.stats.ok, fail: state.stats.fail, risk: state.stats.risk, elapsedMs: nowMs() - state.stats.startedAt }), 'ok');
+      await saveHistory();
+    }
+  }
+
+  function requestStop() {
+    if (!state.running) return;
+    state.stopRequested = true;
+    log('正在停止…（当前这条请求会走完）', 'warn');
+  }
+
+  async function diagnose() {
+    const lines = [];
+    const p = await pingBridge();
+    lines.push('页面代理：' + (p
+      ? '正常，签名函数 ' + (p.signer ? '已就绪' : '缺失（刷新页面）') + '，接口域 ' + p.origin
+      : '无响应（脚本可能未注入）'));
+    lines.push('当前路径：' + location.pathname + location.search);
+    lines.push('页面识别：' + (getPageActualTabType() || '未知'));
+    lines.push('卡片节点：section.note-item=' + $$('section.note-item').length + '，.note-item=' + $$('.note-item').length);
+    lines.push('能解析出的笔记：' + scanCards().length + ' 篇');
+    const tabs = mainTabs();
+    lines.push('主标签：' + (tabs.length ? tabs.map(function (t) { return (t.textContent || '').trim().slice(0, 8); }).join(' | ') : '未找到'));
+    lines.push('激活标签：' + (currentTabLabel() || '无法判定（不影响运行）'));
+    lines.push('滚动方式：' + (findScrollContainer() ? '内部容器' : 'window'));
+
+    const uncollectCount = (state.modeCache && state.modeCache.uncollect) ? state.modeCache.uncollect.length : 0;
+    const unlikeCount = (state.modeCache && state.modeCache.unlike) ? state.modeCache.unlike.length : 0;
+    lines.push('独立缓存：收藏 ' + uncollectCount + ' 篇，点赞 ' + unlikeCount + ' 篇');
+    lines.push('本地记录：已取消收藏 ' + state.processed.uncollect.length + ' 条，已取消点赞 ' + state.processed.unlike.length + ' 条');
+    lines.push('累计历史：' + state.history.length + ' 条');
+    lines.forEach(function (l) { log('· ' + l); });
+    console.info('[RedNote Manager] 诊断\n' + lines.join('\n'));
+    if (!p || !p.signer) log('提示：签名函数缺失通常刷新页面即可恢复', 'warn');
+  }
+
+  async function clearRecords() {
+    if (state.running) return;
+    if (!window.confirm('清空「已处理」记录和撤销历史？这不会影响账号，只是让这些笔记重新进入候选。')) return;
+    state.processed = { uncollect: [], unlike: [] };
+    state.history = [];
+    state.modeCache = { uncollect: [], unlike: [] };
+    state.modeSelected = { uncollect: new Map(), unlike: new Map() };
+    syncActiveModePointers();
+    saveProcessed();
+    await saveHistory();
+    log('已清空本地记录与各模式缓存', 'ok');
+    broadcastState();
+  }
+
+  function setMode(mode) {
+    if (!C.MODES[mode] || state.running) return;
+    if (state.settings.mode === mode) return;
+    state.settings.mode = mode;
+    saveSettings();
+    syncActiveModePointers(); // 切换指针到当前模式的独立缓存！
+    state.anchorId = null;
+    clearPageCards();
+    log('已切换到「' + C.MODES[mode].label + '」视图，显示对应已缓存笔记（' + state.candidates.length + ' 篇）', 'info');
+    afterSelectionChange();
+    if (stackState.open) syncStackListToFilter();
+    refreshPageCards();
+    broadcastState();
+
+    // 智能联动：如果在个人主页，主动联动切换小红书页面对应的 Tab
+    if (PROFILE_RE.test(location.pathname) && !isOwnNotesPage()) {
+      const targetLabel = C.MODES[mode].tabLabel;
+      ensureTab(targetLabel).then(function () {
+        setTimeout(function () {
+          if (syncDomCardsToCandidates()) {
+            refreshPageCards();
+            broadcastState();
+          }
+        }, 350);
+        setTimeout(function () {
+          if (syncDomCardsToCandidates()) {
+            refreshPageCards();
+            broadcastState();
+          }
+        }, 850);
+      }).catch(function () {});
+    }
+  }
+
+  /* ============================ 挂载页面底部反馈栏与叠卡浮层 ============================ */
+
+  function mount() {
+    if (state.mounted) return;
+    const host = document.createElement('div');
+    host.id = 'rn-manager-host';
+    host.style.cssText = 'position: fixed; inset: 0; width: 0; height: 0; z-index: 2147483600; pointer-events: none;';
+    const root = host.attachShadow({ mode: 'open' });
+
+    const style = document.createElement('style');
+    style.textContent = STYLE;
+    root.appendChild(style);
+
+    // 1. 全局居中独立提示浮层（不依赖底部条显示）
+    const toast = document.createElement('div');
+    toast.className = 'rn-global-toast';
+    toast.id = 'rn-global-toast';
+    root.appendChild(toast);
+
+    // 2. 底部已选条数悬浮反馈栏
+    const wrap = document.createElement('div');
+    wrap.className = 'rn-bar-wrap rn-hidden';
+    wrap.id = 'rn-bar-wrap';
+    wrap.innerHTML = [
+      '<div class="rn-bar-toast" id="rn-bar-toast"></div>',
+      '<div class="rn-bar-badge">',
+      '  <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
+      '</div>',
+      '<div class="rn-bar-info">',
+      '  已选择 <span class="rn-bar-count" id="rn-bar-count">0</span> 篇笔记',
+      '</div>',
+      '<span class="rn-bar-sep"></span>',
+      '<button class="rn-bar-btn" id="rn-bar-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>',
+      '<button class="rn-bar-btn" id="rn-bar-clear" type="button" title="清空全部已选笔记">清空</button>',
+      '<button class="rn-bar-btn rn-bar-open" id="rn-bar-open" type="button" title="展开 Chrome 原生侧边栏操作">展开侧边栏 ⇥</button>',
+    ].join('');
+    root.appendChild(wrap);
+
+    // 3. 叠卡速览交互模态框
+    const stackOverlay = document.createElement('div');
+    stackOverlay.className = 'rn-stack-overlay';
+    stackOverlay.id = 'rn-stack-overlay';
+    stackOverlay.innerHTML = [
+      '<div class="rn-stack-box">',
+      '  <div class="rn-stack-header">',
+      '    <div class="rn-stack-title-area">',
+      '      <span class="rn-stack-badge">🗂️ 叠卡浏览</span>',
+      '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
+      '    </div>',
+      '    <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
+      '  </div>',
+      '  <div class="rn-stack-auto-row">',
+      '    <div class="rn-stack-opt">',
+      '      <span>🎲 随机回顾</span>',
+      '      <label class="rn-stack-toggle" title="开启后，下一个将随机抽取笔记进行回顾">',
+      '        <input type="checkbox" id="rn-stack-random-toggle"' + (stackState.randomMode ? ' checked' : '') + '>',
+      '        <span class="rn-stack-slider"></span>',
+      '      </label>',
+      '    </div>',
+      '    <div class="rn-stack-opt">',
+      '      <span>操作后自动下一个</span>',
+      '      <label class="rn-stack-toggle" title="开启后，点击操作按钮将自动滑向下一篇">',
+      '        <input type="checkbox" id="rn-stack-auto-toggle"' + (stackState.autoAdvance ? ' checked' : '') + '>',
+      '        <span class="rn-stack-slider"></span>',
+      '      </label>',
+      '    </div>',
+      '  </div>',
+      '  <div class="rn-stack-deck" id="rn-stack-deck">',
+      '    <div class="rn-card-layer rn-layer-2" id="rn-layer-2"></div>',
+      '    <div class="rn-card-layer rn-layer-1" id="rn-layer-1"></div>',
+      '    <div class="rn-card-main" id="rn-card-main">',
+      '      <div class="rn-card-cover-box">',
+      '        <img class="rn-card-cover-img" id="rn-card-img" alt="封面" style="display:none;" />',
+      '        <div class="rn-card-cover-empty" id="rn-card-empty">🎴</div>',
+      '        <span class="rn-card-status-pill" id="rn-card-status">待处理</span>',
+      '        <a class="rn-card-open-btn" id="rn-card-open-btn" target="_blank" rel="noopener noreferrer" title="在新标签页中打开查看笔记原文">查看原文 ↗</a>',
+      '      </div>',
+      '      <div class="rn-card-info-box">',
+      '        <div class="rn-card-title" id="rn-card-title"></div>',
+      '        <div class="rn-card-meta">',
+      '          <span class="rn-card-author" id="rn-card-author"></span>',
+      '          <span id="rn-card-id"></span>',
+      '        </div>',
+      '      </div>',
+      '    </div>',
+      '  </div>',
+      '  <div class="rn-stack-actions">',
+      '    <button class="rn-action-nav-btn" id="rn-stack-prev" type="button" title="上一张 (←)">',
+      '      <span>⬅</span> 上一个',
+      '    </button>',
+      '    <div class="rn-action-exec-btns">',
+      '      <button class="rn-stack-icon-btn rn-icon-like" id="rn-stack-like" type="button" aria-label="点赞" title="点赞状态"></button>',
+      '      <button class="rn-stack-icon-btn rn-icon-collect" id="rn-stack-collect" type="button" aria-label="收藏" title="收藏状态"></button>',
+      '    </div>',
+      '    <button class="rn-action-nav-btn" id="rn-stack-next" type="button" title="下一张 (→)">',
+      '      下一个 <span>➡</span>',
+      '    </button>',
+      '  </div>',
+      '</div>',
+    ].join('');
+    root.appendChild(stackOverlay);
+
+    (document.body || document.documentElement).appendChild(host);
+    state.mounted = true;
+
+    state.els = {
+      host: host,
+      root: root,
+      wrap: wrap,
+      count: $('#rn-bar-count', root),
+      toast: toast,
+      clear: $('#rn-bar-clear', root),
+      open: $('#rn-bar-open', root),
+      stack: $('#rn-bar-stack', root),
+    };
+
+    stackState.els = {
+      overlay: stackOverlay,
+      deck: $('#rn-stack-deck', root),
+      counter: $('#rn-stack-counter', root),
+      close: $('#rn-stack-close', root),
+      autoToggle: $('#rn-stack-auto-toggle', root),
+      randomToggle: $('#rn-stack-random-toggle', root),
+      layer1: $('#rn-layer-1', root),
+      layer2: $('#rn-layer-2', root),
+      cardMain: $('#rn-card-main', root),
+      img: $('#rn-card-img', root),
+      empty: $('#rn-card-empty', root),
+      status: $('#rn-card-status', root),
+      title: $('#rn-card-title', root),
+      author: $('#rn-card-author', root),
+      id: $('#rn-card-id', root),
+      btnPrev: $('#rn-stack-prev', root),
+      btnNext: $('#rn-stack-next', root),
+      btnLike: $('#rn-stack-like', root),
+      btnCollect: $('#rn-stack-collect', root),
+      btnUncollect: $('#rn-stack-collect', root),
+      btnUnlike: $('#rn-stack-like', root),
+      btnOpen: $('#rn-card-open-btn', root),
+    };
+
+    const openBtn = $('#rn-card-open-btn', root);
+    if (openBtn) {
+      openBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+      });
+    }
+
+    const titleEl = $('#rn-card-title', root);
+    if (titleEl) {
+      titleEl.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        const note = stackState.list[stackState.index];
+        if (note && note.id) {
+          window.open('https://www.xiaohongshu.com/explore/' + note.id, '_blank', 'noopener,noreferrer');
+        }
+      });
+    }
+
+    $('#rn-bar-clear', root).addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      clearSelection();
+    });
+
+    $('#rn-bar-open', root).addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      try {
+        quietly(chrome.runtime.sendMessage({ type: 'RN_OPEN_SIDE_PANEL' }));
+      } catch (e) {}
+      showToast('已请求展开侧边栏（也可随时点击右上角插件图标）');
+    });
+
+    $('#rn-bar-stack', root).addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      openStackView();
+    });
+
+    stackOverlay.addEventListener('click', function (ev) {
+      if (ev.target === stackOverlay) {
+        closeStackView();
+      }
+    });
+
+    stackState.els.close.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      closeStackView();
+    });
+
+    stackState.els.autoToggle.addEventListener('change', function () {
+      stackState.autoAdvance = !!this.checked;
+      try {
+        localStorage.setItem('rn:stack_auto_advance', String(stackState.autoAdvance));
+      } catch (e) {}
+    });
+
+    stackState.els.randomToggle.addEventListener('change', function () {
+      stackState.randomMode = !!this.checked;
+      try {
+        localStorage.setItem('rn:stack_random_mode', String(stackState.randomMode));
+      } catch (e) {}
+      renderStackCard();
+    });
+
+    stackState.els.btnPrev.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      prevStackCard();
+    });
+
+    stackState.els.btnNext.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      nextStackCard('left');
+    });
+
+    stackState.els.btnLike.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleStackAction('like');
+    });
+
+    stackState.els.btnCollect.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleStackAction('collect');
+    });
+
+    bindPageEvents();
+    refreshPageCards();
+    updateSelectionFeedback();
+    if (pageTimer) clearInterval(pageTimer);
+    pageTimer = setInterval(refreshPageCards, 400);
+  }
+
+  function unmount() {
+    if (!state.mounted) return;
+    try {
+      if (state.els && state.els.host && state.els.host.parentNode) {
+        state.els.host.parentNode.removeChild(state.els.host);
+      }
+    } catch (e) { /* 忽略 */ }
+    clearPageCards();
+    state.mounted = false;
+    state.els = null;
+    stackState.els = null;
+    stackState.open = false;
+  }
+
+  /* ============================ 与 Chrome 侧边栏通信 ============================ */
+
+  function fullPublicState() {
+    syncActiveModePointers();
+    const mode = state.settings.mode;
+    const M = C.MODES[mode];
+    const vis = visibleCandidates();
+    const selKeys = Array.from(state.selected.keys());
+    const visSel = vis.filter(function (n) { return state.selected.has(n.id); }).length;
+
+    const uncollectList = (state.modeCache && state.modeCache.uncollect) || [];
+    const unlikeList = (state.modeCache && state.modeCache.unlike) || [];
+
+    const formatNote = function (n) {
+      return {
+        id: n.id,
+        title: n.title,
+        author: n.author || '',
+        cover: n.cover || '',
+      };
+    };
+
+    return {
+      mounted: state.mounted,
+      running: state.running,
+      mode: mode,
+      modeLabel: M ? M.label : '',
+      candidates: state.candidates.map(formatNote),
+      candidatesCount: state.candidates.length,
+      selected: selKeys,
+      selectedCount: state.selected.size,
+      visible: vis.map(formatNote),
+      visibleCount: vis.length,
+      visibleSelectedCount: visSel,
+      cacheCounts: {
+        uncollect: uncollectList.length,
+        unlike: unlikeList.length,
+      },
+      stats: {
+        ok: state.stats.ok,
+        fail: state.stats.fail,
+        risk: state.stats.risk,
+        total: state.stats.total || 0,
+      },
+      logs: state.logs.slice(-100),
+      processed: {
+        uncollect: state.processed.uncollect.slice(),
+        unlike: state.processed.unlike.slice(),
+      },
+      settings: Object.assign({}, state.settings),
+      lastLog: state.logs.length ? state.logs[state.logs.length - 1].msg : '',
+      onProfile: PROFILE_RE.test(location.pathname),
+      isOwnNotes: isOwnNotesPage(),
+      risk: state.stats.risk,
+    };
+  }
+
+  function broadcastState() {
+    try {
+      quietly(chrome.runtime.sendMessage({
+        type: 'RN_STATE_UPDATED',
+        state: fullPublicState(),
+      }));
+    } catch (e) { /* 忽略 */ }
+  }
+
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (!msg || typeof msg.type !== 'string' || msg.type.indexOf('RN_') !== 0) return;
+
+    if (msg.type === 'RN_STATE' || msg.type === 'RN_GET_STATE') {
+      syncDomCardsToCandidates();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_REFRESH_CACHE') {
+      state.modeCache = { uncollect: [], unlike: [] };
+      state.modeSelected = { uncollect: new Map(), unlike: new Map() };
+      syncActiveModePointers();
+      staleCardsFromPreviousTab = null;
+      syncDomCardsToCandidates();
+      refreshPageCards();
+      broadcastState();
+      log('已清空独立缓存并重新从页面读取', 'ok');
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_ACTION') {
+      const action = msg.action;
+      if (action === 'start') startRun();
+      else if (action === 'stop') requestStop();
+      else if (action === 'scan') scanOnly();
+      else if (action === 'undo') undoRun();
+      else if (action === 'diagnose') diagnose();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_SET_MODE') {
+      setMode(msg.mode);
+      if (stackState.open) {
+        syncStackListToFilter({
+          keyword: msg.keyword,
+          tag: msg.tag,
+          ids: msg.ids,
+        });
+      }
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_SYNC_STACK_FILTER') {
+      if (typeof msg.keyword === 'string') {
+        state.settings.keyword = msg.keyword.slice(0, 200);
+      }
+      syncStackListToFilter({
+        keyword: msg.keyword,
+        tag: msg.tag,
+        ids: msg.ids,
+      });
+      sendResponse({ ok: true });
+      return;
+    }
+    if (msg.type === 'RN_SET_KEYWORD') {
+      state.settings.keyword = String(msg.keyword || '').slice(0, 200);
+      saveSettings();
+      state.anchorId = null;
+      afterSelectionChange();
+      if (stackState.open) syncStackListToFilter();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_TOGGLE_SELECTION') {
+      const note = noteById(msg.noteId) || pageNoteFor(msg.noteId) || { id: msg.noteId, title: '' };
+      toggleSelection(note, !!msg.shiftKey, {
+        order: pageCardIds(),
+        lookup: function (x) { return pageNoteFor(x) || noteById(x) || { id: x, title: '' }; },
+      });
+      if (stackState.open) syncStackListToFilter();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_SELECT_ALL_VISIBLE') {
+      if (typeof msg.keyword === 'string') {
+        state.settings.keyword = msg.keyword.slice(0, 200);
+      }
+      selectAllVisible(Array.isArray(msg.ids) ? msg.ids : null);
+      if (stackState.open) syncStackListToFilter();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_INVERT_VISIBLE') {
+      invertVisible(Array.isArray(msg.ids) ? msg.ids : null);
+      if (stackState.open) syncStackListToFilter();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_CLEAR_SELECTION') {
+      clearSelection();
+      if (stackState.open) syncStackListToFilter();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_UPDATE_SETTINGS') {
+      state.settings = C.clampSettings(Object.assign({}, state.settings, msg.settings || {}));
+      saveSettings();
+      broadcastState();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_CLEAR_RECORDS') {
+      clearRecords();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_OPEN_STACK_VIEW') {
+      const res = openStackView(msg);
+      sendResponse({
+        ok: !!(res && res.ok),
+        count: (res && res.count) || 0,
+        reason: (res && res.reason) || '',
+        state: fullPublicState(),
+      });
+      return;
+    }
+  });
+
+  /* ============================ 生命周期 ============================ */
+
+  let lastKnownUrl = location.href;
+
+  function onUrlChange() {
+    if (location.href !== lastKnownUrl) {
+      lastKnownUrl = location.href;
+      syncModeWithActiveTab();
+
+      // 切 Tab / URL 变化时，切换至对应模式的独立缓存
+      syncActiveModePointers();
+      state.anchorId = null;
+      clearPageCards();
+      broadcastState();
+
+      if (!isOwnNotesPage()) {
+        setTimeout(function () {
+          if (syncDomCardsToCandidates()) broadcastState();
+          refreshPageCards();
+        }, 350);
+        setTimeout(function () {
+          if (syncDomCardsToCandidates()) broadcastState();
+          refreshPageCards();
+        }, 850);
+      }
+    }
+  }
+
+  function tick() {
+    const onProfile = PROFILE_RE.test(location.pathname);
+    if (onProfile && !state.mounted) {
+      mount();
+    } else if (!onProfile && state.mounted) {
+      unmount();
+    }
+    if (onProfile && state.mounted) {
+      onUrlChange();
+      if (!isOwnNotesPage()) {
+        if (syncDomCardsToCandidates()) {
+          broadcastState();
+          if (stackState.open) syncStackListToFilter();
+        }
+        refreshPageCards();
+      }
+    }
+  }
+
+  window.addEventListener('popstate', onUrlChange);
+
+  (async function boot() {
+    await loadStorage();
+    updateMyProfileInfo();
+    quietly(detectMyUserInfo());
+    tick();
+    syncDomCardsToCandidates();
+    broadcastState();
+    // SPA 路由跳转不会触发 load，用轮询兜住
+    setInterval(tick, 1200);
+    if (state.mounted) {
+      log('就绪：卡片左上角可直接勾选；或展开 Chrome 原生侧边栏批量操作', 'info');
+    }
+  })();
+
+  // 挂载至全局便于控制台调试与自检
+  globalThis.__rnManager = {
+    state: state,
+    scan: scanCards,
+    start: startRun,
+    stop: requestStop,
+    diagnose: diagnose,
+    candidates: function () { return state.candidates.slice(); },
+    visible: function () { return visibleCandidates().slice(); },
+    selection: function () { return Array.from(state.selected.keys()); },
+    selectAll: selectAllVisible,
+    invert: invertVisible,
+    clearSelection: clearSelection,
+    fullPublicState: fullPublicState,
+    stack: {
+      open: openStackView,
+      close: closeStackView,
+      next: nextStackCard,
+      prev: prevStackCard,
+      execute: executeStackAction,
+      state: stackState,
+    },
+  };
+})();

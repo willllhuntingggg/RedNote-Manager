@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RedNote Manager · 侧边栏</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <div class="rn-panel">
+    <header class="rn-hdr">
+      <div class="rn-logo">RN</div>
+      <div class="rn-titles">
+        <h1 class="rn-title">RedNote Manager</h1>
+        <div class="rn-sub-titles">
+          <span class="rn-hint" id="rn-hint">小红书主页</span>
+          <span class="rn-safe-hint">🛡️ 安全保护中</span>
+        </div>
+      </div>
+      <button class="rn-icobtn" id="rn-gear" type="button" title="设置与维护">⚙</button>
+    </header>
+
+    <div class="rn-body">
+      <!-- 设置与维护抽屉 (点击右上角 ⚙ 展开/收起) -->
+      <div class="rn-settings" id="rn-settings" hidden>
+        <div class="rn-settings-section">
+          <div class="rn-settings-hd">⚙️ 运行参数</div>
+          <div class="rn-field">
+            <label>操作间隔</label>
+            <input class="rn-input rn-num" id="rn-minDelay" type="number" min="800" max="20000" step="100" />
+            <span>–</span>
+            <input class="rn-input rn-num" id="rn-maxDelay" type="number" min="800" max="60000" step="100" />
+            <label>ms</label>
+          </div>
+          <div class="rn-field">
+            <label>单次上限</label>
+            <input class="rn-input rn-num" id="rn-maxPerRun" type="number" min="1" max="200" step="1" />
+            <label>篇</label>
+            <label>冷却频率</label>
+            <input class="rn-input rn-num" id="rn-cooldownEvery" type="number" min="0" max="200" step="1" />
+            <label>篇 /</label>
+            <input class="rn-input rn-num" id="rn-cooldownMs" type="number" min="0" max="600000" step="5000" />
+            <label>ms</label>
+          </div>
+          <div class="rn-field">
+            <label class="rn-check"><input type="checkbox" id="rn-autoScroll" /> 滚动加载全部</label>
+          </div>
+        </div>
+
+        <div class="rn-settings-section">
+          <div class="rn-settings-hd">🤖 AI 智能打标设置 (DeepSeek)</div>
+          <div class="rn-field">
+            <label>API Key</label>
+            <input class="rn-input rn-grow" id="rn-ai-key" type="password" placeholder="sk-..." autocomplete="off" />
+            <button class="rn-icobtn rn-mini-ico" id="rn-ai-key-eye" type="button" title="显示/隐藏密钥">👁</button>
+          </div>
+          <div class="rn-field">
+            <label>模型选择</label>
+            <select class="rn-select rn-grow" id="rn-ai-model">
+              <option value="deepseek-chat">deepseek-chat (推荐·极速省流)</option>
+              <option value="deepseek-reasoner">deepseek-reasoner (深度推理 R1)</option>
+            </select>
+          </div>
+          <div class="rn-row rn-settings-actions">
+            <button class="rn-btn rn-mini" id="rn-ai-test" type="button" title="向 DeepSeek 发送测试探测包验证 API Key">测试连接</button>
+            <button class="rn-btn rn-mini" id="rn-ai-save" type="button">保存密钥</button>
+            <button class="rn-btn rn-mini" id="rn-ai-clear" type="button" title="清空本地已分析的标签缓存">清空标签缓存</button>
+          </div>
+          <div class="rn-note rn-ai-note">
+            密钥仅保存在本地扩展存储，直接请求 DeepSeek 官方。<br>
+            标签结果自动持久化缓存，避免重复分析扣费。<a href="https://platform.deepseek.com/api_keys" target="_blank" class="rn-link">获取 DeepSeek Key ↗</a>
+          </div>
+        </div>
+
+        <div class="rn-settings-section">
+          <div class="rn-settings-hd">🛠️ 维护与高级工具</div>
+          <div class="rn-row rn-settings-actions">
+            <button class="rn-btn rn-mini" id="rn-refresh" type="button" title="清空独立缓存并重新从页面读取">刷新缓存</button>
+            <button class="rn-btn rn-mini" id="rn-undo" type="button" title="撤销最近处理的一批笔记">撤销上次</button>
+            <button class="rn-btn rn-mini" id="rn-diag" type="button" title="检测接口与环境状态">运行诊断</button>
+            <button class="rn-btn rn-mini rn-btn-danger" id="rn-clear" type="button" title="清空本地已处理记录">清空记录</button>
+          </div>
+        </div>
+
+        <div class="rn-note">
+          在小红书页面卡片左上角可以直接勾选（按住 Shift 支持区间多选）。真实操作已包含安全限速。
+        </div>
+      </div>
+
+      <!-- 模式切换：收藏 / 点赞 -->
+      <div class="rn-tabs">
+        <button class="rn-tab rn-on" type="button" data-mode="uncollect" id="rn-tab-uncollect">
+          <span class="rn-tab-text">收藏</span>
+          <span class="rn-badge-cnt" id="rn-badge-uncollect">0</span>
+        </button>
+        <button class="rn-tab" type="button" data-mode="unlike" id="rn-tab-unlike">
+          <span class="rn-tab-text">点赞</span>
+          <span class="rn-badge-cnt" id="rn-badge-unlike">0</span>
+        </button>
+      </div>
+
+      <!-- 提示 / 警告 -->
+      <div class="rn-alert" id="rn-alert" hidden></div>
+
+      <!-- 数据统计看板 -->
+      <div class="rn-stats">
+        <div class="rn-stat"><b id="rn-s-cand">0</b><span>候选</span></div>
+        <div class="rn-stat"><b id="rn-s-sel" class="rn-acc">0</b><span>已勾选</span></div>
+        <div class="rn-stat"><b id="rn-s-ok" class="rn-ok">0</b><span>已处理</span></div>
+        <div class="rn-stat"><b id="rn-s-fail" class="rn-bad">0</b><span>失败</span></div>
+      </div>
+
+      <!-- 进度条 -->
+      <div class="rn-progress"><i id="rn-bar"></i></div>
+
+      <!-- 主控制按钮 -->
+      <div class="rn-row">
+        <button class="rn-btn" id="rn-scan" type="button">① 读取列表</button>
+        <button class="rn-btn rn-primary" id="rn-start" type="button">取消收藏</button>
+        <button class="rn-btn rn-stop" id="rn-stop" type="button" disabled title="仅在批量执行运行中时激活，可随时手动停止">停止</button>
+      </div>
+
+      <!-- 搜索筛选 -->
+      <div class="rn-search">
+        <input class="rn-input rn-grow" id="rn-q" type="text" placeholder="搜索已读笔记：标题 / 片段 / id，-词 排除" />
+        <span class="rn-hit" id="rn-hit">0/0</span>
+      </div>
+
+      <!-- 批量选择工具栏 -->
+      <div class="rn-tools">
+        <button class="rn-btn rn-mini" id="rn-sel-all" type="button" title="勾选当前搜索命中的全部未处理笔记">全选命中</button>
+        <button class="rn-btn rn-mini" id="rn-sel-invert" type="button">反选</button>
+        <button class="rn-btn rn-mini" id="rn-sel-clear" type="button">清空</button>
+        <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">✨ AI 分类</button>
+        <button class="rn-btn rn-mini" id="rn-btn-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>
+        <span style="flex:1"></span>
+        <span class="rn-selcount" id="rn-sel-count">已选 0</span>
+      </div>
+
+      <!-- AI 标签胶囊筛选栏（分析后或有缓存标签时展示） -->
+      <div class="rn-tag-filter-bar" id="rn-tag-filter-bar" hidden>
+        <div class="rn-tag-chips" id="rn-tag-chips"></div>
+      </div>
+
+      <!-- 候选笔记列表 -->
+      <div class="rn-list" id="rn-list">
+        <div class="rn-empty">正在连接小红书页面…</div>
+      </div>
+
+      <!-- 实时日志 -->
+      <div class="rn-log" id="rn-log"></div>
+    </div>
+  </div>
+
+  <script src="../core.js"></script>
+  <script src="../ai.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

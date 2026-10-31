@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "RedNote Manager · 小红书批量取消收藏/点赞",
+  "version": "0.2.0",
+  "description": "在小红书网页版批量取消收藏、取消点赞：原生侧边栏操作，限速 + 批次冷却 + 风控熔断，支持一键撤销。",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "sidePanel"],
+  "host_permissions": [
+    "https://*.xiaohongshu.com/*",
+    "https://*.rednote.com/*",
+    "https://api.deepseek.com/*",
+    "https://*.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  },
+  "action": {
+    "default_title": "RedNote Manager",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.xiaohongshu.com/*", "https://*.rednote.com/*"],
+      "js": ["src/core.js", "src/content/style.js", "src/content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://*.xiaohongshu.com/*", "https://*.rednote.com/*"],
+      "js": ["src/page/bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    }
+  ]
+}
