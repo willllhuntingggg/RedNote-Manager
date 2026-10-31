@@ -93,6 +93,37 @@
     return detectMyUserInfo().me;
   }
 
+  /** 从页面状态 window.__INITIAL_STATE__ 深度扫描已有的 xsecToken 凭证映射表 */
+  function collectTokens() {
+    const tokens = {};
+    const st = window.__INITIAL_STATE__;
+    if (!st || typeof st !== 'object') return tokens;
+
+    function walk(obj, depth) {
+      if (!obj || typeof obj !== 'object' || depth > 7) return;
+      if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) walk(obj[i], depth + 1);
+        return;
+      }
+      const id = obj.id || obj.noteId || (obj.noteCard && obj.noteCard.noteId);
+      const token = obj.xsecToken || obj.xsec_token;
+      if (typeof id === 'string' && /^[0-9a-f]{24}$/i.test(id) && typeof token === 'string' && token) {
+        tokens[id.toLowerCase()] = token;
+      }
+      const keys = Object.keys(obj);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k === 'userPageData' || k === 'basicInfo') continue;
+        walk(obj[k], depth + 1);
+      }
+    }
+
+    try {
+      walk(st, 0);
+    } catch (e) {}
+    return tokens;
+  }
+
   async function callApi(path, method, body) {
     const signer = pickSigner();
     if (!signer) {
@@ -140,13 +171,18 @@
 
     if (msg.kind === 'ping') {
       const info = detectMyUserInfo();
-      reply({ id: msg.id, ok: true, signer: !!pickSigner(), origin: API_ORIGIN, me: info.me, nickname: info.nickname });
+      reply({ id: msg.id, ok: true, signer: !!pickSigner(), origin: API_ORIGIN, me: info.me, nickname: info.nickname, tokens: collectTokens() });
       return;
     }
 
     if (msg.kind === 'me') {
       const info = detectMyUserInfo();
-      reply({ id: msg.id, ok: true, me: info.me, nickname: info.nickname });
+      reply({ id: msg.id, ok: true, me: info.me, nickname: info.nickname, tokens: collectTokens() });
+      return;
+    }
+
+    if (msg.kind === 'tokens') {
+      reply({ id: msg.id, ok: true, tokens: collectTokens() });
       return;
     }
 

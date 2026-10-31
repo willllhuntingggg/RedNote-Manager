@@ -167,6 +167,40 @@
   }
 
   /**
+   * 从卡片链接中提取 xsec_token 安全凭证
+   */
+  function extractXsecToken(href) {
+    const s = String(href || '');
+    const m = s.match(/[?&]xsec_token=([^&#]+)/i);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  /**
+   * 构建可直接在浏览器新标签页打开且绕过防爬/扫码拦截的完整原文链接
+   */
+  function buildNoteUrl(noteOrId, token) {
+    if (!noteOrId) return '';
+    let id = '';
+    let xToken = token || '';
+    let rawUrl = '';
+
+    if (typeof noteOrId === 'string') {
+      id = extractNoteId(noteOrId) || (/^[0-9a-f]{24}$/i.test(noteOrId) ? noteOrId.toLowerCase() : '');
+      if (!xToken) xToken = extractXsecToken(noteOrId);
+    } else if (typeof noteOrId === 'object') {
+      id = noteOrId.id || extractNoteId(noteOrId.url || noteOrId.href);
+      rawUrl = noteOrId.url || noteOrId.href || '';
+      xToken = xToken || noteOrId.xsecToken || extractXsecToken(rawUrl);
+    }
+
+    if (!id) return '';
+    if (xToken) {
+      return 'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=' + encodeURIComponent(xToken) + '&xsec_source=pc_user';
+    }
+    return 'https://www.xiaohongshu.com/explore/' + id + '?xsec_source=pc_user';
+  }
+
+  /**
    * 从用户个人主页链接提取 user_id (24位十六进制)
    */
   function extractUserId(href) {
@@ -293,7 +327,9 @@
     isSuccess: isSuccess,
     describeError: describeError,
     extractNoteId: extractNoteId,
+    extractXsecToken: extractXsecToken,
     extractUserId: extractUserId,
+    buildNoteUrl: buildNoteUrl,
     dedupeNotes: dedupeNotes,
     parseKeywords: parseKeywords,
     matchKeywords: matchKeywords,

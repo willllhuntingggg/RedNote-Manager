@@ -421,6 +421,7 @@ function renderList(candidates, visible, st, query) {
         '</div>';
     }
 
+    const noteUrl = n.url || C.buildNoteUrl(n.id, n.xsecToken);
     return (
       '<div class="rn-item' + (isSel ? ' rn-sel' : '') + (isDone ? ' rn-done' : '') + '"' +
       ' data-id="' + esc(n.id) + '" role="checkbox" aria-checked="' + (isSel ? 'true' : 'false') + '"' +
@@ -429,7 +430,7 @@ function renderList(candidates, visible, st, query) {
       '<div class="rn-item-main">' +
         '<div class="rn-item-row">' +
           '<span class="rn-nm">' + esc(titleOf(n)) + '</span>' +
-          '<a class="rn-item-link" href="https://www.xiaohongshu.com/explore/' + esc(n.id) + '" target="_blank" rel="noopener noreferrer" title="在新标签页中打开查看笔记原文">↗</a>' +
+          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener noreferrer" title="在新标签页中打开查看笔记原文">↗</a>' +
           '<span class="rn-id">' + esc(n.id.slice(-6)) + '</span>' +
         '</div>' +
         tagsHtml +

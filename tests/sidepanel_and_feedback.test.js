@@ -1053,9 +1053,11 @@ test('已处理/已取消的笔记不再出现在列表和叠卡中', () => {
 
 test('笔记卡片与侧边栏支持查看原文外链生成', () => {
   const noteId = '64a1b2c3d4e5f60718293a4b';
-  const url = 'https://www.xiaohongshu.com/explore/' + noteId;
-  assert.strictEqual(url, 'https://www.xiaohongshu.com/explore/64a1b2c3d4e5f60718293a4b');
-  assert.strictEqual(C.extractNoteId(url), noteId);
+  const token = 'AB1234567890XYZ';
+  const fullUrl = C.buildNoteUrl(noteId, token);
+  assert.strictEqual(fullUrl, 'https://www.xiaohongshu.com/explore/64a1b2c3d4e5f60718293a4b?xsec_token=AB1234567890XYZ&xsec_source=pc_user');
+  assert.strictEqual(C.extractNoteId(fullUrl), noteId);
+  assert.strictEqual(C.extractXsecToken(fullUrl), token);
 });
 
 test('页面卡片入库保留完整 candidates 数据源，且在已处理状态下支持按需切换展示', () => {

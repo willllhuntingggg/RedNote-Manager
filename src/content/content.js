@@ -63,6 +63,7 @@
     anchorId: null,
     processed: { uncollect: [], unlike: [] },
     history: [],
+    xsecTokens: {},
     running: false,
     stopRequested: false,
     stats: { ok: 0, fail: 0, risk: false, startedAt: 0, total: 0 },
@@ -296,10 +297,22 @@
       if (r) {
         if (r.me) myProfileInfo.userId = r.me.toLowerCase();
         if (r.nickname) myProfileInfo.nickname = r.nickname.trim();
+        if (r.tokens && typeof r.tokens === 'object') {
+          Object.assign(state.xsecTokens, r.tokens);
+        }
         return r;
       }
     } catch (e) {}
     return { me: '', nickname: '' };
+  }
+
+  async function syncPageTokens() {
+    try {
+      const r = await bridge('tokens', {}, 3000);
+      if (r && r.tokens && typeof r.tokens === 'object') {
+        Object.assign(state.xsecTokens, r.tokens);
+      }
+    } catch (e) {}
   }
 
   async function detectMyUserId() {
@@ -403,6 +416,20 @@
 
     if (!id) return null;
 
+    // 提取可绕过防爬/扫码拦截的 xsec_token 安全凭证并生成完整原文链接
+    let token = C.extractXsecToken(href);
+    if (!token && el.getAttribute) {
+      token = el.getAttribute('data-xsec-token') || el.getAttribute('data-token') || '';
+    }
+    if (!token && state.xsecTokens && state.xsecTokens[id]) {
+      token = state.xsecTokens[id];
+    }
+    if (token && id) {
+      state.xsecTokens[id] = token;
+    }
+
+    const noteUrl = C.buildNoteUrl(href || id, token);
+
     let title = '';
     for (let i = 0; i < TITLE_SELECTORS.length; i++) {
       const t = $(TITLE_SELECTORS[i], el);
@@ -440,6 +467,8 @@
       author: author.replace(/\s+/g, ' ').slice(0, 40),
       authorId: authorId,
       cover: cover,
+      url: noteUrl,
+      xsecToken: token,
     };
   }
 
@@ -1604,8 +1633,9 @@
       stackState.els.empty.style.display = 'block';
     }
 
-    // 更新查看原文链接按钮
-    const noteUrl = note.id ? ('https://www.xiaohongshu.com/explore/' + note.id) : '';
+    // 更新查看原文链接按钮（必须附带安全令牌 xsec_token 才能在新标签页直接查看原文并绕过扫码拦截）
+    const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
+    const noteUrl = note.url || C.buildNoteUrl(note.id, token);
     if (stackState.els.btnOpen) {
       if (noteUrl) {
         stackState.els.btnOpen.href = noteUrl;
@@ -2431,7 +2461,9 @@
         ev.stopPropagation();
         const note = stackState.list[stackState.index];
         if (note && note.id) {
-          window.open('https://www.xiaohongshu.com/explore/' + note.id, '_blank', 'noopener,noreferrer');
+          const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
+          const url = note.url || C.buildNoteUrl(note.id, token);
+          window.open(url, '_blank', 'noopener,noreferrer');
         }
       });
     }
@@ -2535,11 +2567,14 @@
     const unlikeList = (state.modeCache && state.modeCache.unlike) || [];
 
     const formatNote = function (n) {
+      const token = n.xsecToken || (state.xsecTokens && state.xsecTokens[n.id]) || '';
       return {
         id: n.id,
         title: n.title,
         author: n.author || '',
         cover: n.cover || '',
+        url: n.url || C.buildNoteUrl(n.id, token),
+        xsecToken: token,
       };
     };
 

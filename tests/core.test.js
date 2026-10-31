@@ -38,6 +38,23 @@ test('extractNoteId 只取笔记 ID，不把用户 ID 当笔记 ID', () => {
   // 提取用户 ID
   assert.strictEqual(C.extractUserId('/user/profile/5f1e2d3c4b5a69788796a5b4'), '5f1e2d3c4b5a69788796a5b4');
   assert.strictEqual(C.extractUserId('https://www.xiaohongshu.com/user/profile/5f1e2d3c4b5a69788796a5b4?tab=collect'), '5f1e2d3c4b5a69788796a5b4');
+
+  // 提取 xsec_token 与生成带凭证的完整原文链接
+  const testUrl = '/explore/' + id + '?xsec_token=AB1234567890Token&xsec_source=pc_user';
+  assert.strictEqual(C.extractXsecToken(testUrl), 'AB1234567890Token');
+  assert.strictEqual(C.extractXsecToken('/explore/' + id), '');
+  assert.strictEqual(
+    C.buildNoteUrl(id, 'AB1234567890Token'),
+    'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=AB1234567890Token&xsec_source=pc_user'
+  );
+  assert.strictEqual(
+    C.buildNoteUrl({ id: id, xsecToken: 'AB1234567890Token' }),
+    'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=AB1234567890Token&xsec_source=pc_user'
+  );
+  assert.strictEqual(
+    C.buildNoteUrl(testUrl),
+    'https://www.xiaohongshu.com/explore/' + id + '?xsec_token=AB1234567890Token&xsec_source=pc_user'
+  );
 });
 
 test('clampSettings 兜底默认值并夹住危险输入', () => {
