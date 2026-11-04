@@ -28,14 +28,14 @@ if (fs.existsSync(cwsZipFilePath)) {
 }
 fs.mkdirSync(targetDir, { recursive: true });
 
-// 2. 复制函数（过滤 .DS_Store 及测试文件）
+// 2. 复制函数（过滤 .DS_Store、测试文件及商店宣传海报资源）
 function copyRecursive(src, dest) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     fs.mkdirSync(dest, { recursive: true });
     const entries = fs.readdirSync(src);
     for (const entry of entries) {
-      if (entry === '.DS_Store' || entry === '__tests__' || entry.endsWith('.test.js')) continue;
+      if (entry === '.DS_Store' || entry === '__tests__' || entry === 'cws' || entry.endsWith('.test.js')) continue;
       copyRecursive(path.join(src, entry), path.join(dest, entry));
     }
   } else {
@@ -44,13 +44,13 @@ function copyRecursive(src, dest) {
   }
 }
 
-// 3. 复制核心文件
-const filesToCopy = ['manifest.json', 'assets', 'src', 'README.md'];
+// 3. 复制核心文件（仅复制扩展运行必需文件）
+const filesToCopy = ['manifest.json', 'assets', 'src'];
 for (const item of filesToCopy) {
   const srcPath = path.join(rootDir, item);
   if (fs.existsSync(srcPath)) {
     copyRecursive(srcPath, path.join(targetDir, item));
-    console.log(`[Package] 已复制: ${item}`);
+    console.log(`[Package] 已复制核心目录: ${item}`);
   }
 }
 
