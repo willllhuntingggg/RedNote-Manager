@@ -5,7 +5,8 @@
   "description": "小红书网页版批量取消收藏 / 取消点赞的 Chrome 扩展（Chrome 原生侧边栏，带限速与风控熔断）",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "test:dom": "node tests/dom/smoke.dom.js && node tests/dom/scenarios.dom.js && node tests/dom/selection.dom.js && node tests/dom/page-select.dom.js"
+    "test:dom": "node tests/dom/smoke.dom.js && node tests/dom/scenarios.dom.js && node tests/dom/selection.dom.js && node tests/dom/page-select.dom.js",
+    "package": "node scripts/package.js"
   },
   "devDependencies": {
     "jsdom": "^25.0.1"
