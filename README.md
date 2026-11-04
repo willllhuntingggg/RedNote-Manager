@@ -83,12 +83,22 @@ sidepanel.js (Chrome 原生侧边栏)
 | 重新收藏（撤销） | `POST /api/sns/web/v1/note/collect` | `{ "note_id": "<note_id>" }` |
 | 重新点赞（撤销） | `POST /api/sns/web/v1/note/like` | `{ "note_oid": "<note_id>" }` |
 
-## 安装
+## 下载与安装
 
-1. 把这个目录放到本地（无需构建）
-2. 打开 `chrome://extensions` → 右上角开启「开发者模式」
-3. 点「加载已解压的扩展程序」→ 选择本目录（含 `manifest.json` 的那一层）
-4. 需要 **Chrome / Edge ≥ 116**（原生 Side Panel API 支持）
+### 方式一：一键下载安装包（小白推荐）
+1. 前往 **[GitHub Releases 发布页](https://github.com/willllhuntingggg/RedNote-Manager/releases/latest)** 下载最新版的 **`rednote-manager-v0.2.0.zip`**
+2. 解压下载的压缩包（得到一个 `rednote-manager` 文件夹）
+3. 打开 Chrome 或 Edge 浏览器，在地址栏输入并回车：`chrome://extensions`
+4. 开启页面右上角的「**开发者模式**」开关
+5. 点击左上角的「**加载已解压的扩展程序**」，选中刚才解压出的 `rednote-manager` 目录，即可立即使用！
+
+### 方式二：源码安装（开发者）
+```bash
+git clone https://github.com/willllhuntingggg/RedNote-Manager.git
+cd "RedNote Manager"
+npm run package  # 可在 dist/ 目录生成最新发布包
+```
+然后在 `chrome://extensions` 中加载源码目录即可。需要 **Chrome / Edge ≥ 116**（原生 Side Panel API 支持）。
 
 ## 使用
 
