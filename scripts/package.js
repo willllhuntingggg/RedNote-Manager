@@ -11,6 +11,8 @@ const distDir = path.join(rootDir, 'dist');
 const targetDir = path.join(distDir, 'rednote-manager');
 const zipFileName = `rednote-manager-v${version}.zip`;
 const zipFilePath = path.join(distDir, zipFileName);
+const cwsZipFileName = `rednote-manager-v${version}-cws.zip`;
+const cwsZipFilePath = path.join(distDir, cwsZipFileName);
 
 console.log(`[Package] 开始构建 RedNote Manager v${version} 发布包...`);
 
@@ -20,6 +22,9 @@ if (fs.existsSync(targetDir)) {
 }
 if (fs.existsSync(zipFilePath)) {
   fs.rmSync(zipFilePath, { force: true });
+}
+if (fs.existsSync(cwsZipFilePath)) {
+  fs.rmSync(cwsZipFilePath, { force: true });
 }
 fs.mkdirSync(targetDir, { recursive: true });
 
@@ -81,17 +86,24 @@ const installDoc = `RedNote Manager (小红书批量整理助手) · 浏览器�
 fs.writeFileSync(path.join(targetDir, 'INSTALL.txt'), installDoc, 'utf8');
 console.log('[Package] 已生成: INSTALL.txt');
 
-// 5. 生成 zip 压缩包
-console.log(`[Package] 正在生成压缩包: ${zipFileName}...`);
+// 5. 生成两套 zip 压缩包
+console.log(`[Package] 正在生成开发者模式分发包: ${zipFileName}...`);
 try {
-  // 进入 dist 目录，直接打包 rednote-manager 文件夹，使解压后得到整齐的 rednote-manager 目录
+  // A. 开发者模式专用分发包：解压后直接为 rednote-manager 文件夹，方便朋友解压后一键加载
   execSync(`cd "${distDir}" && zip -r -q "${zipFileName}" rednote-manager -x "*.DS_Store"`, { stdio: 'inherit' });
-  const stat = fs.statSync(zipFilePath);
-  const sizeKb = (stat.size / 1024).toFixed(1);
+  const stat1 = fs.statSync(zipFilePath);
+  const sizeKb1 = (stat1.size / 1024).toFixed(1);
+
+  // B. Chrome Web Store / 扩展商店专用上传包：manifest.json 必须位于 zip 的根目录！
+  console.log(`[Package] 正在生成 Chrome Web Store 商店专用上传包: ${cwsZipFileName}...`);
+  execSync(`cd "${targetDir}" && zip -r -q "${cwsZipFilePath}" * -x "*.DS_Store" -x "INSTALL.txt"`, { stdio: 'inherit' });
+  const stat2 = fs.statSync(cwsZipFilePath);
+  const sizeKb2 = (stat2.size / 1024).toFixed(1);
+
   console.log(`\n🎉 打包成功！`);
-  console.log(`📦 压缩包路径: ${zipFilePath}`);
-  console.log(`📁 解压目录:   ${targetDir}`);
-  console.log(`📊 压缩包体积: ${sizeKb} KB\n`);
+  console.log(`📦 [发给朋友使用]   ${zipFilePath} (${sizeKb1} KB)`);
+  console.log(`🚀 [上传应用商店专用] ${cwsZipFilePath} (${sizeKb2} KB)`);
+  console.log(`📁 [已解压源目录]   ${targetDir}\n`);
 } catch (err) {
   console.error('[Package] zip 命令打包失败:', err.message);
   process.exit(1);
