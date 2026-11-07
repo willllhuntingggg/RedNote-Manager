@@ -609,7 +609,64 @@ body {
   line-height: 1.5;
 }
 
-/* 实时日志 */
+/* 底部操作记录栏与实时日志 */
+.rn-log-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
+.rn-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding: 0 2px;
+}
+
+.rn-log-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #9292a4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rn-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rn-log-undo-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 46, 77, 0.12);
+  border: 1px solid rgba(255, 46, 77, 0.35);
+  color: #ff8597;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rn-log-undo-btn:hover:not(:disabled) {
+  background: rgba(255, 46, 77, 0.28);
+  border-color: #ff2e4d;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(255, 46, 77, 0.35);
+}
+
+.rn-log-undo-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: #2b2b36;
+  background: rgba(255, 255, 255, 0.04);
+  color: #666675;
+}
+
 .rn-log {
   flex: 0 0 120px;
   height: 120px;
@@ -628,12 +685,50 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   color: #a4a4b2;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .rn-line.rn-l-ok { color: #52d98b; }
 .rn-line.rn-l-err { color: #ff7287; }
 .rn-line.rn-l-warn { color: #f5b942; }
 .rn-line .rn-t { color: #585866; }
+.rn-line .rn-msg { flex: 1 1 auto; }
+
+.rn-line-undo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 4px;
+  background: rgba(255, 46, 77, 0.15);
+  border: 1px solid rgba(255, 46, 77, 0.35);
+  color: #ff8597;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.rn-line-undo-btn:hover {
+  background: #ff2e4d;
+  border-color: #ff2e4d;
+  color: #fff;
+}
+
+.rn-line-undo-btn.rn-undone {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: #2e2e38;
+  color: #585866;
+  cursor: default;
+  pointer-events: none;
+}
 
 /* ============================ AI 智能打标与分类样式 ============================ */
 

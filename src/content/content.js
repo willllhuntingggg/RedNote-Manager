@@ -1288,7 +1288,7 @@
 
   let toastTimer = null;
 
-  function showToast(text) {
+  function showToast(text, durationMs) {
     if (!state.els || !state.els.toast) return;
     const t = state.els.toast;
     t.textContent = text;
@@ -1296,7 +1296,7 @@
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       t.classList.remove('rn-show');
-    }, 2200);
+    }, durationMs || 1200);
   }
 
   function updateSelectionFeedback(feedback) {
@@ -1606,6 +1606,17 @@
       if (collectBtn) collectBtn.disabled = true;
       if (stackState.els.layer1) stackState.els.layer1.style.display = 'none';
       if (stackState.els.layer2) stackState.els.layer2.style.display = 'none';
+
+      if (stackState.els.btnUndo) {
+        const lastStackUndo = C.findUndoTarget(state.history, state.settings.mode);
+        const canUndo = !!(lastStackUndo && lastStackUndo.type === 'single' && !state.running);
+        stackState.els.btnUndo.disabled = !canUndo;
+        if (canUndo && lastStackUndo.title) {
+          stackState.els.btnUndo.title = '撤销刚才处理的笔记：「' + lastStackUndo.title + '」';
+        } else {
+          stackState.els.btnUndo.title = '当前无刚划走/处理的单篇笔记可撤销';
+        }
+      }
       return;
     }
 
@@ -1721,6 +1732,18 @@
       collectBtn.classList.toggle('rn-active-collected', st.collected);
       collectBtn.title = st.collected ? '已收藏（点击取消收藏）' : '未收藏（点击收藏）';
       collectBtn.innerHTML = st.collected ? SVG_STAR_FILLED : SVG_STAR_OUTLINE;
+    }
+
+    // 更新叠卡顶部撤销按钮状态（仅在有刚才取消的单篇笔记时高亮激活）
+    if (stackState.els.btnUndo) {
+      const lastStackUndo = C.findUndoTarget(state.history, state.settings.mode);
+      const canUndo = !!(lastStackUndo && lastStackUndo.type === 'single' && !state.running);
+      stackState.els.btnUndo.disabled = !canUndo;
+      if (canUndo && lastStackUndo.title) {
+        stackState.els.btnUndo.title = '撤销刚才处理的笔记：「' + lastStackUndo.title + '」';
+      } else {
+        stackState.els.btnUndo.title = '当前无刚划走/处理的单篇笔记可撤销';
+      }
     }
 
     // 参差错落下层卡片视觉呈现
@@ -1929,8 +1952,35 @@
             markProcessed('unlike', note.id);
             removeCandidate('unlike', note.id);
             state.selected.delete(note.id);
-            pushHistory({ id: note.id, title: note.title, mode: 'unlike', ts: nowMs() });
-            log('已取消点赞：' + titleOf(note), 'ok');
+            const singleId = 'single_' + nowMs() + '_' + note.id;
+            const histItem = {
+              id: note.id,
+              title: note.title || '',
+              mode: 'unlike',
+              ts: nowMs(),
+              type: 'single',
+              batchId: singleId,
+              source: 'stack',
+              note: {
+                id: note.id,
+                title: note.title,
+                author: note.author,
+                cover: note.cover,
+                url: note.url,
+                xsecToken: note.xsecToken,
+                _liked: false,
+                _collected: note._collected,
+              },
+            };
+            pushHistory(histItem);
+            log('[叠卡] 已取消点赞：' + titleOf(note), 'ok', {
+              canUndo: true,
+              undoType: 'single',
+              noteId: note.id,
+              batchId: singleId,
+              title: titleOf(note),
+              mode: 'unlike',
+            });
             showToast('已取消点赞');
 
             // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
@@ -1978,8 +2028,35 @@
             markProcessed('uncollect', note.id);
             removeCandidate('uncollect', note.id);
             state.selected.delete(note.id);
-            pushHistory({ id: note.id, title: note.title, mode: 'uncollect', ts: nowMs() });
-            log('已取消收藏：' + titleOf(note), 'ok');
+            const singleId = 'single_' + nowMs() + '_' + note.id;
+            const histItem = {
+              id: note.id,
+              title: note.title || '',
+              mode: 'uncollect',
+              ts: nowMs(),
+              type: 'single',
+              batchId: singleId,
+              source: 'stack',
+              note: {
+                id: note.id,
+                title: note.title,
+                author: note.author,
+                cover: note.cover,
+                url: note.url,
+                xsecToken: note.xsecToken,
+                _liked: note._liked,
+                _collected: false,
+              },
+            };
+            pushHistory(histItem);
+            log('[叠卡] 已取消收藏：' + titleOf(note), 'ok', {
+              canUndo: true,
+              undoType: 'single',
+              noteId: note.id,
+              batchId: singleId,
+              title: titleOf(note),
+              mode: 'uncollect',
+            });
             showToast('已取消收藏');
 
             // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
@@ -2071,6 +2148,7 @@
       state.running = true;
       state.stopRequested = false;
       state.stats = { ok: 0, fail: 0, risk: false, startedAt: nowMs(), total: planned };
+      const currentBatchId = 'batch_' + nowMs() + '_' + Math.random().toString(36).slice(2, 7);
       broadcastState();
 
       let streak = 0;
@@ -2114,8 +2192,29 @@
             markProcessed(s.mode, note.id);
             removeCandidate(s.mode, note.id);
             state.selected.delete(note.id);
-            pushHistory({ id: note.id, title: note.title, mode: s.mode, ts: nowMs() });
-            log('[' + (done + 1) + '/' + planned + '] 已' + M.verb + '：' + titleOf(note), 'ok');
+            pushHistory({
+              id: note.id,
+              title: note.title || '',
+              mode: s.mode,
+              ts: nowMs(),
+              type: 'batch',
+              batchId: currentBatchId,
+              source: 'batch',
+              note: {
+                id: note.id,
+                title: note.title,
+                author: note.author,
+                cover: note.cover,
+                url: note.url,
+                xsecToken: note.xsecToken,
+              },
+            });
+            log('[' + (done + 1) + '/' + planned + '] 已' + M.verb + '：' + titleOf(note), 'ok', {
+              noteId: note.id,
+              batchId: currentBatchId,
+              mode: s.mode,
+              type: 'batch',
+            });
           } else {
             streak++;
             state.stats.fail++;
@@ -2154,7 +2253,13 @@
           fail: state.stats.fail,
           risk: state.stats.risk,
           elapsedMs: nowMs() - state.stats.startedAt,
-        }), state.stats.risk ? 'err' : 'ok');
+        }), state.stats.risk ? 'err' : 'ok', {
+          canUndo: state.stats.ok > 0,
+          undoType: 'batch',
+          batchId: currentBatchId,
+          count: state.stats.ok,
+          mode: s.mode,
+        });
       }
     }
   }
@@ -2181,16 +2286,24 @@
     }
   }
 
-  async function undoRun() {
+  async function undoRun(options) {
     if (state.running) return;
-    const mode = state.settings.mode;
+    const mode = (options && options.mode) || state.settings.mode;
     const M = C.MODES[mode];
-    const items = state.history.filter(function (h) { return h.mode === mode && !h.undone; });
-    if (!items.length) {
-      log('当前模式（' + M.label + '）没有可撤销的记录', 'warn');
+    const target = C.findUndoTarget(state.history, mode, options);
+    if (!target || !target.items || !target.items.length) {
+      log('当前模式（' + (M ? M.label : mode) + '）没有可撤销的记录', 'warn');
+      showToast('没有可撤销的记录');
       return;
     }
-    if (!window.confirm('将' + M.undoVerb + '最近 ' + items.length + ' 条记录，确定？')) return;
+
+    const items = target.items;
+    const isSingle = target.type === 'single';
+
+    if (!isSingle) {
+      const confirmMsg = '将' + M.undoVerb + '上次批量处理的 ' + items.length + ' 篇笔记，确定？';
+      if (!window.confirm(confirmMsg)) return;
+    }
 
     state.running = true;
     state.stopRequested = false;
@@ -2203,26 +2316,64 @@
         if (i > 0 && !(await interruptibleSleep(C.delayBetween(state.settings.minDelay, state.settings.maxDelay)))) break;
 
         const h = items[i];
+        const itemMode = h.mode || mode;
+        const itemM = C.MODES[itemMode] || M;
         try {
-          const res = await callWrite(mode, 'undo', h.id);
+          const res = await callWrite(itemMode, 'undo', h.id);
           if (C.isRiskResponse(res.payload, res.status)) {
             state.stats.risk = true;
             log('⛔ 撤销时命中风控，已停止：' + C.describeError(res.payload, res.status), 'err');
+            showToast('撤销命中风控，已停止');
             break;
           }
           if (C.isSuccess(res.payload)) {
             state.stats.ok++;
             h.undone = true;
             h.undoneAt = nowMs();
-            unmarkProcessed(mode, h.id);
-            log('[' + (i + 1) + '/' + items.length + '] 已' + M.undoVerb + '：' + (h.title || h.id), 'ok');
+            unmarkProcessed(itemMode, h.id);
+
+            // 更新日志中对应项的撤销状态标记
+            state.logs.forEach(function (l) {
+              if (l.noteId === h.id || (target.batchId && l.batchId === target.batchId)) {
+                l.undone = true;
+              }
+            });
+
+            // 恢复笔记回候选列表 / 模式独立缓存
+            const restoredNote = h.note ? Object.assign({}, h.note) : { id: h.id, title: h.title };
+            if (itemMode === 'uncollect') restoredNote._collected = true;
+            if (itemMode === 'unlike') restoredNote._liked = true;
+
+            if (state.candidates && !state.candidates.some(function (n) { return n.id === h.id; })) {
+              state.candidates.unshift(restoredNote);
+            }
+            if (state.modeCache && state.modeCache[itemMode] && !state.modeCache[itemMode].some(function (n) { return n.id === h.id; })) {
+              state.modeCache[itemMode].unshift(restoredNote);
+            }
+
+            // 若叠卡速览浮层处于打开状态，将恢复的笔记插回叠卡列表当前位置并刷新卡片展示
+            if (stackState.open) {
+              const existingIdx = stackState.list.findIndex(function (n) { return n.id === h.id; });
+              if (existingIdx === -1) {
+                stackState.list.splice(stackState.index, 0, restoredNote);
+              }
+              renderStackCard();
+            }
+
+            const prefix = isSingle ? ('已撤销单篇（' + itemM.undoVerb + '）') : ('[' + (i + 1) + '/' + items.length + '] 已' + itemM.undoVerb);
+            log(prefix + '：' + (h.title || h.id), 'ok');
+            if (isSingle) {
+              showToast('已恢复' + itemM.tabLabel + '：「' + (h.title || h.id) + '」');
+            }
           } else {
             state.stats.fail++;
-            log('[' + (i + 1) + '/' + items.length + '] ' + M.undoVerb + '失败：' + (h.title || h.id) + ' — ' + C.describeError(res.payload, res.status), 'err');
+            const errStr = C.describeError(res.payload, res.status);
+            log((isSingle ? '撤销失败' : '[' + (i + 1) + '/' + items.length + '] ' + itemM.undoVerb + '失败') + '：' + (h.title || h.id) + ' — ' + errStr, 'err');
+            showToast('撤销失败：' + errStr);
           }
         } catch (e) {
           state.stats.fail++;
-          log('[' + (i + 1) + '/' + items.length + '] 出错：' + ((e && e.message) || e), 'err');
+          log((isSingle ? '撤销出错' : '[' + (i + 1) + '/' + items.length + '] 出错') + '：' + ((e && e.message) || e), 'err');
         }
         broadcastState();
         await saveHistory();
@@ -2230,8 +2381,14 @@
     } finally {
       state.running = false;
       state.stopRequested = false;
+      updateSelectionFeedback();
+      refreshPageCards();
+      if (stackState.open) renderStackCard();
       broadcastState();
-      log('撤销结束：' + C.summarize({ ok: state.stats.ok, fail: state.stats.fail, risk: state.stats.risk, elapsedMs: nowMs() - state.stats.startedAt }), 'ok');
+      if (!isSingle) {
+        log('批量撤销结束：' + C.summarize({ ok: state.stats.ok, fail: state.stats.fail, risk: state.stats.risk, elapsedMs: nowMs() - state.stats.startedAt }), 'ok');
+        showToast('批量撤销结束：成功 ' + state.stats.ok + ' 篇');
+      }
       await saveHistory();
     }
   }
@@ -2364,7 +2521,10 @@
       '      <span class="rn-stack-badge">🗂️ 叠卡浏览</span>',
       '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
       '    </div>',
-      '    <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
+      '    <div class="rn-stack-header-actions">',
+      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才划走/取消的笔记" disabled>↩️ 撤销刚才</button>',
+      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
+      '    </div>',
       '  </div>',
       '  <div class="rn-stack-auto-row">',
       '    <div class="rn-stack-opt">',
@@ -2454,6 +2614,7 @@
       btnUncollect: $('#rn-stack-collect', root),
       btnUnlike: $('#rn-stack-like', root),
       btnOpen: $('#rn-card-open-btn', root),
+      btnUndo: $('#rn-stack-undo', root),
     };
 
     const openBtn = $('#rn-card-open-btn', root);
@@ -2552,6 +2713,13 @@
       toggleStackAction('collect');
     });
 
+    if (stackState.els.btnUndo) {
+      stackState.els.btnUndo.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        undoRun({ undoType: 'single', mode: state.settings.mode });
+      });
+    }
+
     bindPageEvents();
     refreshPageCards();
     updateSelectionFeedback();
@@ -2627,6 +2795,18 @@
       },
       settings: Object.assign({}, state.settings),
       lastLog: state.logs.length ? state.logs[state.logs.length - 1].msg : '',
+      lastUndo: (function () {
+        const u = C.findUndoTarget(state.history, mode);
+        return u ? {
+          canUndo: true,
+          type: u.type,
+          count: u.count,
+          noteId: u.noteId,
+          batchId: u.batchId,
+          title: u.title,
+          mode: u.mode,
+        } : null;
+      })(),
       onProfile: PROFILE_RE.test(location.pathname),
       isOwnNotes: isOwnNotesPage(),
       risk: state.stats.risk,
@@ -2667,7 +2847,7 @@
       if (action === 'start') startRun();
       else if (action === 'stop') requestStop();
       else if (action === 'scan') scanOnly();
-      else if (action === 'undo') undoRun();
+      else if (action === 'undo') undoRun(msg);
       else if (action === 'diagnose') diagnose();
       sendResponse({ ok: true, state: fullPublicState() });
       return;

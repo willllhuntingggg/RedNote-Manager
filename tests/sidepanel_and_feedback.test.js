@@ -1105,5 +1105,106 @@ test('页面卡片入库保留完整 candidates 数据源，且在已处理状�
   assert.strictEqual(getCandidates(state).length, 3);
 });
 
+test('撤销系统能够清晰区分单篇与批量操作，支持从操作记录单条撤销与叠卡平滑复原', () => {
+  // 模拟运行环境数据结构
+  const state = {
+    running: false,
+    settings: { mode: 'uncollect', minDelay: 1000, maxDelay: 2000 },
+    processed: { uncollect: ['note_batch_1', 'note_batch_2', 'note_single_A', 'note_single_B'], unlike: [] },
+    candidates: [],
+    modeCache: { uncollect: [], unlike: [] },
+    history: [
+      {
+        id: 'note_batch_1',
+        title: '批量笔记1',
+        mode: 'uncollect',
+        ts: 1000,
+        type: 'batch',
+        batchId: 'batch_001',
+        source: 'batch',
+        note: { id: 'note_batch_1', title: '批量笔记1' },
+      },
+      {
+        id: 'note_batch_2',
+        title: '批量笔记2',
+        mode: 'uncollect',
+        ts: 1001,
+        type: 'batch',
+        batchId: 'batch_001',
+        source: 'batch',
+        note: { id: 'note_batch_2', title: '批量笔记2' },
+      },
+      {
+        id: 'note_single_A',
+        title: '叠卡笔记A',
+        mode: 'uncollect',
+        ts: 2000,
+        type: 'single',
+        batchId: 'single_A',
+        source: 'stack',
+        note: { id: 'note_single_A', title: '叠卡笔记A' },
+      },
+      {
+        id: 'note_single_B',
+        title: '叠卡笔记B',
+        mode: 'uncollect',
+        ts: 2005,
+        type: 'single',
+        batchId: 'single_B',
+        source: 'stack',
+        note: { id: 'note_single_B', title: '叠卡笔记B' },
+      },
+    ],
+    logs: [
+      { t: '12:00:01', msg: '本次结束：成功 2 篇', canUndo: true, undoType: 'batch', batchId: 'batch_001', count: 2, mode: 'uncollect' },
+      { t: '12:00:10', msg: '[叠卡] 已取消收藏：叠卡笔记A', canUndo: true, undoType: 'single', noteId: 'note_single_A', batchId: 'single_A', mode: 'uncollect' },
+      { t: '12:00:15', msg: '[叠卡] 已取消收藏：叠卡笔记B', canUndo: true, undoType: 'single', noteId: 'note_single_B', batchId: 'single_B', mode: 'uncollect' },
+    ],
+  };
+
+  // 1. 用户刚在叠卡模式划走笔记B，此时触发「撤销上次」：
+  // 必须精准识别为单篇操作，目标仅仅是「叠卡笔记B」，绝对不能连带撤销笔记A或批量批次！
+  const lastTarget = C.findUndoTarget(state.history, state.settings.mode);
+  assert.notStrictEqual(lastTarget, null);
+  assert.strictEqual(lastTarget.type, 'single');
+  assert.strictEqual(lastTarget.count, 1);
+  assert.strictEqual(lastTarget.noteId, 'note_single_B');
+  assert.strictEqual(lastTarget.items.length, 1);
+
+  // 模拟单篇撤销执行完毕
+  const undoneItem = lastTarget.items[0];
+  undoneItem.undone = true;
+  state.processed.uncollect = state.processed.uncollect.filter((id) => id !== undoneItem.id);
+  state.candidates.unshift(undoneItem.note);
+  state.logs.forEach((l) => { if (l.noteId === undoneItem.id) l.undone = true; });
+
+  assert.strictEqual(state.processed.uncollect.includes('note_single_B'), false, '笔记B已移出已处理');
+  assert.strictEqual(state.candidates.some((n) => n.id === 'note_single_B'), true, '笔记B已恢复至候选池');
+  assert.strictEqual(state.logs[2].undone, true, '日志中笔记B标记为已撤销');
+
+  // 2. 用户在底部操作记录中，直接点击「叠卡笔记A」旁边的 [撤销] 按钮：
+  // 传入 options: { noteId: 'note_single_A' }
+  const specificTarget = C.findUndoTarget(state.history, state.settings.mode, { noteId: 'note_single_A' });
+  assert.notStrictEqual(specificTarget, null);
+  assert.strictEqual(specificTarget.type, 'single');
+  assert.strictEqual(specificTarget.noteId, 'note_single_A');
+
+  // 模拟笔记A撤销完成
+  specificTarget.items[0].undone = true;
+  state.processed.uncollect = state.processed.uncollect.filter((id) => id !== 'note_single_A');
+  state.candidates.unshift(specificTarget.items[0].note);
+  state.logs.forEach((l) => { if (l.noteId === 'note_single_A') l.undone = true; });
+
+  // 3. 此时叠卡模式的单篇操作均已撤销完成，再次检测「撤销上次」：
+  // 此时自动回退到上一次的批量操作（共 2 篇笔记）
+  const batchTarget = C.findUndoTarget(state.history, state.settings.mode);
+  assert.notStrictEqual(batchTarget, null);
+  assert.strictEqual(batchTarget.type, 'batch');
+  assert.strictEqual(batchTarget.count, 2);
+  assert.strictEqual(batchTarget.batchId, 'batch_001');
+  assert.deepStrictEqual(batchTarget.items.map((n) => n.id), ['note_batch_1', 'note_batch_2']);
+});
+
+
 
 

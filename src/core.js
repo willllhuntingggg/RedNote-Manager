@@ -337,6 +337,125 @@
     return parts.join('，');
   }
 
+  /* ============================ 撤销与批次目标计算 ============================ */
+
+  /**
+   * 查找待撤销的目标（区分单篇撤销与批次撤销）
+   * @param {Array} history 历史记录列表
+   * @param {'uncollect'|'unlike'|null} mode 模式过滤
+   * @param {Object} [options] 可选的指定目标 { noteId, batchId, undoType }
+   * @returns {Object|null} 包含待撤销的目标信息：{ type: 'single'|'batch', items: Array, count: number, noteId, batchId, title, mode, canUndo: boolean }
+   */
+  function findUndoTarget(history, mode, options) {
+    const list = Array.isArray(history) ? history : [];
+    if (!list.length) return null;
+
+    const opt = options || {};
+
+    // 1. 若显式指定 noteId，精准查找单条历史
+    if (opt.noteId) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const h = list[i];
+        if (h && h.id === opt.noteId && !h.undone && (!mode || h.mode === mode)) {
+          return {
+            type: 'single',
+            items: [h],
+            count: 1,
+            noteId: h.id,
+            title: h.title || '',
+            mode: h.mode,
+            batchId: h.batchId,
+            canUndo: true,
+          };
+        }
+      }
+      return null;
+    }
+
+    // 2. 若显式指定 batchId，精准查找同一批次的全部未撤销项
+    if (opt.batchId) {
+      const matched = [];
+      let foundMode = mode;
+      for (let i = 0; i < list.length; i++) {
+        const h = list[i];
+        if (h && h.batchId === opt.batchId && !h.undone && (!mode || h.mode === mode)) {
+          matched.push(h);
+          if (!foundMode) foundMode = h.mode;
+        }
+      }
+      if (!matched.length) return null;
+      return {
+        type: 'batch',
+        items: matched,
+        count: matched.length,
+        batchId: opt.batchId,
+        title: matched[0].title || '',
+        mode: foundMode,
+        canUndo: true,
+      };
+    }
+
+    // 3. 默认：从最新历史往回找第一条尚未撤销的记录
+    let targetItem = null;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const h = list[i];
+      if (h && !h.undone && (!mode || h.mode === mode)) {
+        targetItem = h;
+        break;
+      }
+    }
+
+    if (!targetItem) return null;
+
+    // 判定该记录是单篇操作还是批量操作：
+    // - 显式标记 type: 'single'，或者是没有 batchId 的单个记录
+    // - 若标记 type: 'batch' 且有 batchId，则聚合属于同一 batchId 的所有未撤销项
+    if (targetItem.type === 'single' || (!targetItem.batchId && targetItem.type !== 'batch')) {
+      return {
+        type: 'single',
+        items: [targetItem],
+        count: 1,
+        noteId: targetItem.id,
+        title: targetItem.title || '',
+        mode: targetItem.mode,
+        batchId: targetItem.batchId,
+        canUndo: true,
+      };
+    }
+
+    // 属于批量批次
+    const batchId = targetItem.batchId;
+    if (batchId) {
+      const batchItems = [];
+      for (let i = 0; i < list.length; i++) {
+        const h = list[i];
+        if (h && h.batchId === batchId && !h.undone && (!mode || h.mode === mode)) {
+          batchItems.push(h);
+        }
+      }
+      return {
+        type: 'batch',
+        items: batchItems.length ? batchItems : [targetItem],
+        count: batchItems.length || 1,
+        batchId: batchId,
+        title: targetItem.title || '',
+        mode: targetItem.mode,
+        canUndo: true,
+      };
+    }
+
+    // 兜底（老版本无 type 也无 batchId 的记录）：作为单篇
+    return {
+      type: 'single',
+      items: [targetItem],
+      count: 1,
+      noteId: targetItem.id,
+      title: targetItem.title || '',
+      mode: targetItem.mode,
+      canUndo: true,
+    };
+  }
+
   return {
     MODES: MODES,
     DEFAULTS: DEFAULTS,
@@ -361,5 +480,6 @@
     selectRange: selectRange,
     formatDuration: formatDuration,
     summarize: summarize,
+    findUndoTarget: findUndoTarget,
   };
 });

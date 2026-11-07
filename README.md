@@ -86,7 +86,7 @@ sidepanel.js (Chrome 原生侧边栏)
 ## 下载与安装
 
 ### 方式一：一键下载安装包（小白推荐）
-1. 前往 **[GitHub Releases 发布页](https://github.com/willllhuntingggg/RedNote-Manager/releases/latest)** 下载最新版的 **`rednote-manager-v0.2.0.zip`**
+1. 前往 **[GitHub Releases 发布页](https://github.com/willllhuntingggg/RedNote-Manager/releases/latest)** 下载最新版的 **`rednote-manager-v0.3.0.zip`**
 2. 解压下载的压缩包（得到一个 `rednote-manager` 文件夹）
 3. 打开 Chrome 或 Edge 浏览器，在地址栏输入并回车：`chrome://extensions`
 4. 开启页面右上角的「**开发者模式**」开关

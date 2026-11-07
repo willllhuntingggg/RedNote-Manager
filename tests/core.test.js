@@ -178,3 +178,82 @@ test('matchKeywords 也能匹配作者字段', () => {
   assert.strictEqual(C.matchKeywords({ id: 'x', title: '美食', author: '张三' }, terms), true);
   assert.strictEqual(C.matchKeywords({ id: 'x', title: '美食' }, terms), false);
 });
+
+test('findUndoTarget 能够清晰区分单篇撤销与批量撤销', () => {
+  // 1. 空历史
+  assert.strictEqual(C.findUndoTarget([], 'uncollect'), null);
+
+  // 2. 模拟场景：先批量取消 3 篇，随后在叠卡模式逐篇划走/取消 2 篇
+  const history = [
+    { id: '111111111111111111111111', title: '批量笔记1', mode: 'uncollect', type: 'batch', batchId: 'batch_01', ts: 1000 },
+    { id: '222222222222222222222222', title: '批量笔记2', mode: 'uncollect', type: 'batch', batchId: 'batch_01', ts: 1001 },
+    { id: '333333333333333333333333', title: '批量笔记3', mode: 'uncollect', type: 'batch', batchId: 'batch_01', ts: 1002 },
+    { id: '444444444444444444444444', title: '叠卡笔记A', mode: 'uncollect', type: 'single', batchId: 'single_A', ts: 2000 },
+    { id: '555555555555555555555555', title: '叠卡笔记B', mode: 'uncollect', type: 'single', batchId: 'single_B', ts: 2010 },
+  ];
+
+  // 默认撤销上次：必须只撤销最后一条叠卡笔记B，绝对不能把前后的批量一并撤销！
+  const t1 = C.findUndoTarget(history, 'uncollect');
+  assert.notStrictEqual(t1, null);
+  assert.strictEqual(t1.type, 'single');
+  assert.strictEqual(t1.count, 1);
+  assert.strictEqual(t1.noteId, '555555555555555555555555');
+  assert.strictEqual(t1.items.length, 1);
+  assert.strictEqual(t1.items[0].id, '555555555555555555555555');
+
+  // 模拟笔记B被撤销
+  history[4].undone = true;
+
+  // 再次撤销上次：必须只撤销叠卡笔记A（仍然是单篇），不触及批量！
+  const t2 = C.findUndoTarget(history, 'uncollect');
+  assert.notStrictEqual(t2, null);
+  assert.strictEqual(t2.type, 'single');
+  assert.strictEqual(t2.count, 1);
+  assert.strictEqual(t2.noteId, '444444444444444444444444');
+
+  // 模拟笔记A被撤销
+  history[3].undone = true;
+
+  // 再次撤销上次：此时叠卡单篇均已撤销，撤销目标回退到上一次的批量操作（共 3 篇）
+  const t3 = C.findUndoTarget(history, 'uncollect');
+  assert.notStrictEqual(t3, null);
+  assert.strictEqual(t3.type, 'batch');
+  assert.strictEqual(t3.count, 3);
+  assert.strictEqual(t3.batchId, 'batch_01');
+  assert.deepStrictEqual(t3.items.map((n) => n.id), [
+    '111111111111111111111111',
+    '222222222222222222222222',
+    '333333333333333333333333',
+  ]);
+
+  // 3. 显式指定 noteId（例如在操作记录列表某行点击撤销）
+  const tSpecific = C.findUndoTarget(history, 'uncollect', { noteId: '222222222222222222222222' });
+  assert.notStrictEqual(tSpecific, null);
+  assert.strictEqual(tSpecific.type, 'single');
+  assert.strictEqual(tSpecific.count, 1);
+  assert.strictEqual(tSpecific.noteId, '222222222222222222222222');
+
+  // 4. 显式指定 batchId
+  const tBatch = C.findUndoTarget(history, 'uncollect', { batchId: 'batch_01' });
+  assert.notStrictEqual(tBatch, null);
+  assert.strictEqual(tBatch.type, 'batch');
+  assert.strictEqual(tBatch.count, 3);
+
+  // 5. 模式隔离测试：unlike 历史不被 uncollect 查询误读取
+  const mixedHistory = [
+    { id: '666666666666666666666666', title: '赞过的笔记', mode: 'unlike', type: 'single', ts: 3000 },
+  ];
+  assert.strictEqual(C.findUndoTarget(mixedHistory, 'uncollect'), null);
+  const tLike = C.findUndoTarget(mixedHistory, 'unlike');
+  assert.notStrictEqual(tLike, null);
+  assert.strictEqual(tLike.mode, 'unlike');
+
+  // 6. 老旧历史兜底（无 type 无 batchId 字段）
+  const legacyHistory = [
+    { id: '777777777777777777777777', title: '老版本笔记', mode: 'uncollect', ts: 500 },
+  ];
+  const tLegacy = C.findUndoTarget(legacyHistory, 'uncollect');
+  assert.notStrictEqual(tLegacy, null);
+  assert.strictEqual(tLegacy.type, 'single');
+  assert.strictEqual(tLegacy.noteId, '777777777777777777777777');
+});

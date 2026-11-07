@@ -200,26 +200,28 @@ globalThis.RNStyle = `
     transform: translateX(-50%) translateY(0) !important;
   }
 
-  /* 全局悬浮提示（无论底部栏是否隐藏均可见） */
+  /* 全局悬浮提示（置于顶部中央，避免遮挡底部操作栏与叠卡操作按钮） */
   .rn-global-toast {
     position: fixed !important;
-    bottom: 80px !important;
+    top: 30px !important;
+    bottom: auto !important;
     left: 50% !important;
-    transform: translateX(-50%) translateY(10px) !important;
+    transform: translateX(-50%) translateY(-10px) !important;
     background: rgba(18, 18, 24, 0.94) !important;
     border: 1px solid rgba(255, 255, 255, 0.18) !important;
     border-radius: 20px !important;
-    padding: 8px 18px !important;
-    font-size: 13px !important;
+    padding: 7px 16px !important;
+    font-size: 12.5px !important;
     font-weight: 500 !important;
     color: #fff !important;
     white-space: nowrap !important;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
     backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
     pointer-events: none !important;
     opacity: 0 !important;
     z-index: 2147483647 !important;
-    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
     user-select: none !important;
   }
   .rn-global-toast.rn-show {
@@ -285,6 +287,37 @@ globalThis.RNStyle = `
     font-size: 13px !important;
     color: #b0b0c0 !important;
     font-weight: 500 !important;
+  }
+  .rn-stack-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  .rn-stack-header-undo {
+    all: unset !important;
+    cursor: pointer !important;
+    padding: 3px 10px !important;
+    border-radius: 12px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    color: #ff8597 !important;
+    background: rgba(255, 46, 77, 0.14) !important;
+    border: 1px solid rgba(255, 46, 77, 0.35) !important;
+    transition: all 0.18s ease !important;
+    user-select: none !important;
+  }
+  .rn-stack-header-undo:hover:not(:disabled) {
+    background: rgba(255, 46, 77, 0.28) !important;
+    color: #ffffff !important;
+    border-color: #ff2e4d !important;
+    box-shadow: 0 0 10px rgba(255, 46, 77, 0.35) !important;
+  }
+  .rn-stack-header-undo:disabled {
+    opacity: 0.35 !important;
+    cursor: not-allowed !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #8c8c9e !important;
   }
   .rn-stack-close {
     all: unset !important;

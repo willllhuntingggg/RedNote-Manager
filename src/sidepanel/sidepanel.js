@@ -210,7 +210,28 @@ function applyState(st) {
   startBtn.disabled = isRunning || !candCount || !selCount;
   stopBtn.disabled = !isRunning;
   scanBtn.disabled = isRunning;
-  undoBtn.disabled = isRunning;
+
+  // 动态更新两处撤销按钮（设置抽屉内 + 底部操作记录栏）
+  const undoBtns = [$('rn-undo'), $('rn-log-undo')].filter(Boolean);
+  const lastUndo = st.lastUndo;
+  undoBtns.forEach(function (btn) {
+    if (isRunning) {
+      btn.disabled = true;
+    } else if (lastUndo && lastUndo.canUndo) {
+      btn.disabled = false;
+      if (lastUndo.type === 'single') {
+        btn.textContent = '↩️ 撤销单篇';
+        btn.title = '撤销最近划走/处理的单篇笔记：' + (lastUndo.title || lastUndo.noteId);
+      } else {
+        btn.textContent = '↩️ 撤销上次 (' + lastUndo.count + '篇)';
+        btn.title = '撤销最近批量处理的 ' + lastUndo.count + ' 篇笔记';
+      }
+    } else {
+      btn.disabled = true;
+      btn.textContent = '↩️ 撤销上次';
+      btn.title = '当前没有可撤销的操作记录';
+    }
+  });
 
   const actionVerb = st.mode === 'unlike' ? '取消点赞' : '取消收藏';
   if (isRunning) {
@@ -466,7 +487,21 @@ function renderLogs(logs) {
   const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 25;
   const html = logs.slice(-100).map(function (l) {
     const cls = l.kind && l.kind !== 'info' ? ' rn-l-' + l.kind : '';
-    return '<div class="rn-line' + cls + '"><span class="rn-t">' + esc(l.t) + '</span> ' + esc(l.msg) + '</div>';
+    let undoHtml = '';
+    if (l.canUndo) {
+      if (l.undone) {
+        undoHtml = '<button class="rn-line-undo-btn rn-undone" type="button" disabled>已撤销</button>';
+      } else {
+        const btnText = l.undoType === 'batch' ? ('撤销本批 (' + (l.count || '') + '篇)') : '撤销';
+        const btnTitle = l.undoType === 'batch' ? ('撤销此批处理的 ' + (l.count || '') + ' 篇笔记') : ('撤销对「' + (l.title || l.noteId || '') + '」的操作');
+        undoHtml = '<button class="rn-line-undo-btn" data-undo-type="' + esc(l.undoType || 'single') + '" data-note-id="' + esc(l.noteId || '') + '" data-batch-id="' + esc(l.batchId || '') + '" data-mode="' + esc(l.mode || '') + '" type="button" title="' + esc(btnTitle) + '">' + esc(btnText) + '</button>';
+      }
+    }
+    return '<div class="rn-line' + cls + '">' +
+      '<span class="rn-t">' + esc(l.t) + '</span> ' +
+      '<span class="rn-msg">' + esc(l.msg) + '</span>' +
+      (undoHtml ? undoHtml : '') +
+      '</div>';
   }).join('');
   container.innerHTML = html;
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
@@ -519,6 +554,37 @@ function bindEvents() {
     await sendToTab('RN_ACTION', { action: 'undo' });
     requestState();
   });
+
+  const logUndoBtn = $('rn-log-undo');
+  if (logUndoBtn) {
+    logUndoBtn.addEventListener('click', async function () {
+      await sendToTab('RN_ACTION', { action: 'undo' });
+      requestState();
+    });
+  }
+
+  const logContainer = $('rn-log');
+  if (logContainer) {
+    logContainer.addEventListener('click', async function (ev) {
+      const btn = ev.target && ev.target.closest ? ev.target.closest('.rn-line-undo-btn:not(.rn-undone)') : null;
+      if (!btn) return;
+      ev.stopPropagation();
+      const undoType = btn.dataset.undoType || 'single';
+      const noteId = btn.dataset.noteId || '';
+      const batchId = btn.dataset.batchId || '';
+      const mode = btn.dataset.mode || '';
+      btn.disabled = true;
+      btn.textContent = '撤销中…';
+      await sendToTab('RN_ACTION', {
+        action: 'undo',
+        undoType: undoType,
+        noteId: noteId,
+        batchId: batchId,
+        mode: mode,
+      });
+      requestState();
+    });
+  }
 
   $('rn-diag').addEventListener('click', async function () {
     await sendToTab('RN_ACTION', { action: 'diagnose' });

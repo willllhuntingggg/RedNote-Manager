@@ -147,8 +147,20 @@
         <div class="rn-empty">正在连接小红书页面…</div>
       </div>
 
-      <!-- 实时日志 -->
-      <div class="rn-log" id="rn-log"></div>
+      <!-- 底部操作记录栏 -->
+      <div class="rn-log-panel">
+        <div class="rn-log-header">
+          <div class="rn-log-title">
+            <span>📋 操作记录</span>
+          </div>
+          <div class="rn-log-actions">
+            <button class="rn-btn rn-mini rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作（单篇或批量）" disabled>
+              ↩️ 撤销上次
+            </button>
+          </div>
+        </div>
+        <div class="rn-log" id="rn-log"></div>
+      </div>
     </div>
   </div>
 
