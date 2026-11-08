@@ -25,6 +25,28 @@ test('RNAI cleanJsonText 能够正确提取并清洗各种 Markdown 与杂文字
   assert.strictEqual(RNAI.cleanJsonText(''), '{}');
 });
 
+test('RNAI cleanApiKey 能够正确清理各种带前缀、引号及隐形字符的密钥', () => {
+  // 1. 标准 key
+  assert.strictEqual(RNAI.cleanApiKey('sk-1234567890abcdef'), 'sk-1234567890abcdef');
+  // 2. 带 Bearer 前缀
+  assert.strictEqual(RNAI.cleanApiKey('Bearer sk-1234567890abcdef'), 'sk-1234567890abcdef');
+  assert.strictEqual(RNAI.cleanApiKey('bearer  sk-1234567890abcdef'), 'sk-1234567890abcdef');
+  // 3. 带双引号、单引号或反引号
+  assert.strictEqual(RNAI.cleanApiKey('"sk-1234567890abcdef"'), 'sk-1234567890abcdef');
+  assert.strictEqual(RNAI.cleanApiKey("'sk-1234567890abcdef'"), 'sk-1234567890abcdef');
+  assert.strictEqual(RNAI.cleanApiKey('`sk-1234567890abcdef`'), 'sk-1234567890abcdef');
+  // 4. 带键名前缀 (api_key: sk-... 或 API_KEY=sk-...)
+  assert.strictEqual(RNAI.cleanApiKey('api_key: sk-1234567890abcdef'), 'sk-1234567890abcdef');
+  assert.strictEqual(RNAI.cleanApiKey('API_KEY = sk-1234567890abcdef'), 'sk-1234567890abcdef');
+  assert.strictEqual(RNAI.cleanApiKey('token: sk-1234567890abcdef'), 'sk-1234567890abcdef');
+  // 5. 带有全角空格、不可见零宽字符、BOM与制表符/换行符
+  assert.strictEqual(RNAI.cleanApiKey('\uFEFF\u200Bsk-1234567890abcdef\u00A0\r\n\t'), 'sk-1234567890abcdef');
+  // 6. 空值处理
+  assert.strictEqual(RNAI.cleanApiKey(null), '');
+  assert.strictEqual(RNAI.cleanApiKey(undefined), '');
+  assert.strictEqual(RNAI.cleanApiKey('   '), '');
+});
+
 test('RNAI testConnection 与 analyzeNotes 参数与密钥校验', async () => {
   // 空 Key 时 testConnection 必须优雅返回未授权错误，不抛异常
   const resEmpty = await RNAI.testConnection({ apiKey: '' });

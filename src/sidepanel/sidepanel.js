@@ -749,14 +749,34 @@ function bindEvents() {
     aiBtn.addEventListener('click', async function () {
       if (isAiAnalyzing) return;
 
-      const cfg = (RNAI && RNAI.loadConfig) ? await RNAI.loadConfig() : null;
+      // 动态读取输入框中的实时密钥，优先使用界面上的新输入并自动持久化，防止用户未点「保存」导致读取旧数据
+      const inputKey = ($('rn-ai-key') ? $('rn-ai-key').value : '');
+      const cleanedInputKey = (RNAI && RNAI.cleanApiKey) ? RNAI.cleanApiKey(inputKey) : inputKey.trim();
+
+      let cfg = (RNAI && RNAI.loadConfig) ? await RNAI.loadConfig() : null;
+      if (!cfg) cfg = Object.assign({}, RNAI.DEFAULT_CONFIG);
+
+      // 若当前输入框有内容，且与存储不一致，自动同步并静默持久化保存
+      if (cleanedInputKey) {
+        if (cleanedInputKey !== cfg.apiKey) {
+          cfg.apiKey = cleanedInputKey;
+          const currentModel = $('rn-ai-model') ? $('rn-ai-model').value : (cfg.model || 'deepseek-chat');
+          cfg.model = currentModel;
+          await RNAI.saveConfig(cfg);
+        }
+        // 回写规范化后的密钥至输入框
+        if ($('rn-ai-key') && $('rn-ai-key').value !== cleanedInputKey) {
+          $('rn-ai-key').value = cleanedInputKey;
+        }
+      }
+
       if (!cfg || !cfg.apiKey || !cfg.apiKey.trim()) {
         settingsOpen = true;
         $('rn-settings').hidden = false;
         $('rn-gear').classList.add('rn-active');
         const keyInput = $('rn-ai-key');
         if (keyInput) keyInput.focus();
-        alert('请先在「⚙️ 设置与维护」中填写 DeepSeek API Key 并点击保存。');
+        alert('请先在「⚙️ 设置与维护」中填写 DeepSeek API Key 并点击保存（可前往 platform.deepseek.com 获取）。');
         return;
       }
 
@@ -910,14 +930,48 @@ function bindEvents() {
     });
   }
 
+  // 监听输入框变动并自动保存，防止用户填完直接使用时因未手动点保存而读取旧配置
+  const aiKeyInput = $('rn-ai-key');
+  if (aiKeyInput) {
+    const handleKeyChange = async function () {
+      const raw = aiKeyInput.value || '';
+      const cleaned = (RNAI && RNAI.cleanApiKey) ? RNAI.cleanApiKey(raw) : raw.trim();
+      if (cleaned !== raw) {
+        aiKeyInput.value = cleaned;
+      }
+      const model = $('rn-ai-model') ? $('rn-ai-model').value : 'deepseek-chat';
+      if (RNAI && RNAI.saveConfig) {
+        await RNAI.saveConfig({ apiKey: cleaned, model: model, baseUrl: 'https://api.deepseek.com' });
+      }
+    };
+    aiKeyInput.addEventListener('change', handleKeyChange);
+    aiKeyInput.addEventListener('blur', handleKeyChange);
+    aiKeyInput.addEventListener('paste', function () {
+      setTimeout(handleKeyChange, 60);
+    });
+  }
+
+  const aiModelSelect = $('rn-ai-model');
+  if (aiModelSelect) {
+    aiModelSelect.addEventListener('change', async function () {
+      const rawKey = ($('rn-ai-key') ? $('rn-ai-key').value : '');
+      const apiKey = (RNAI && RNAI.cleanApiKey) ? RNAI.cleanApiKey(rawKey) : rawKey.trim();
+      if (RNAI && RNAI.saveConfig) {
+        await RNAI.saveConfig({ apiKey: apiKey, model: aiModelSelect.value, baseUrl: 'https://api.deepseek.com' });
+      }
+    });
+  }
+
   const aiSaveBtn = $('rn-ai-save');
   if (aiSaveBtn) {
     aiSaveBtn.addEventListener('click', async function () {
-      const apiKey = ($('rn-ai-key') ? $('rn-ai-key').value : '').trim();
+      const rawKey = ($('rn-ai-key') ? $('rn-ai-key').value : '');
+      const apiKey = (RNAI && RNAI.cleanApiKey) ? RNAI.cleanApiKey(rawKey) : rawKey.trim();
+      if ($('rn-ai-key')) $('rn-ai-key').value = apiKey;
       const model = $('rn-ai-model') ? $('rn-ai-model').value : 'deepseek-chat';
       if (RNAI && RNAI.saveConfig) {
         await RNAI.saveConfig({ apiKey: apiKey, model: model, baseUrl: 'https://api.deepseek.com' });
-        alert('DeepSeek 密钥与配置已成功保存！');
+        alert('✅ DeepSeek 密钥与配置已成功保存！');
       }
     });
   }
@@ -925,11 +979,17 @@ function bindEvents() {
   const aiTestBtn = $('rn-ai-test');
   if (aiTestBtn) {
     aiTestBtn.addEventListener('click', async function () {
-      const apiKey = ($('rn-ai-key') ? $('rn-ai-key').value : '').trim();
+      const rawKey = ($('rn-ai-key') ? $('rn-ai-key').value : '');
+      const apiKey = (RNAI && RNAI.cleanApiKey) ? RNAI.cleanApiKey(rawKey) : rawKey.trim();
+      if ($('rn-ai-key')) $('rn-ai-key').value = apiKey;
       const model = $('rn-ai-model') ? $('rn-ai-model').value : 'deepseek-chat';
       if (!apiKey) {
         alert('请先填入 DeepSeek API Key');
         return;
+      }
+      // 测试前先自动同步保存
+      if (RNAI && RNAI.saveConfig) {
+        await RNAI.saveConfig({ apiKey: apiKey, model: model, baseUrl: 'https://api.deepseek.com' });
       }
       aiTestBtn.disabled = true;
       aiTestBtn.textContent = '测试中…';

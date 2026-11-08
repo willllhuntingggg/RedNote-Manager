@@ -53,6 +53,24 @@
   ].join('\n');
 
   /**
+   * 清洗用户输入的 API Key
+   * 自动去除引号、Bearer 前缀、键名前缀、全角字符以及不可见的零宽字符/BOM
+   */
+  function cleanApiKey(raw) {
+    if (!raw) return '';
+    let k = String(raw).trim();
+    // 移除全角空格、不可见零宽字符、BOM与制表符/换行符
+    k = k.replace(/[\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]/g, '').trim();
+    // 移除可能存在的引号包裹: "sk-..." 或 'sk-...'
+    k = k.replace(/^["'`]|["'`]$/g, '').trim();
+    // 移除用户误粘贴的 Bearer 前缀: Bearer sk-...
+    k = k.replace(/^Bearer\s+/i, '').trim();
+    // 移除键名前缀: api_key: sk-... 或 API_KEY=sk-...
+    k = k.replace(/^(?:api[-_]?key|key|token)\s*[:=]\s*/i, '').trim();
+    return k.trim();
+  }
+
+  /**
    * 清洗 LLM 输出的文本为合法 JSON
    */
   function cleanJsonText(raw) {
@@ -76,14 +94,28 @@
    */
   async function testConnection(cfg) {
     const config = Object.assign({}, DEFAULT_CONFIG, cfg || {});
-    const apiKey = (config.apiKey || '').trim();
+    const apiKey = cleanApiKey(config.apiKey);
     if (!apiKey) {
       return { ok: false, error: '请先填入 DeepSeek API Key' };
     }
 
-    const endpoint = config.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+    const endpoint = (config.baseUrl || DEFAULT_CONFIG.baseUrl).replace(/\/+$/, '') + '/chat/completions';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
+
+    const model = config.model || DEFAULT_CONFIG.model;
+    const isReasoner = model.includes('reasoner');
+
+    const reqBody = {
+      model: model,
+      messages: [
+        { role: 'user', content: 'Hi, please reply with JSON: {"status":"ok"}' },
+      ],
+      max_tokens: 20,
+    };
+    if (!isReasoner) {
+      reqBody.response_format = { type: 'json_object' };
+    }
 
     try {
       const res = await fetch(endpoint, {
@@ -92,14 +124,7 @@
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + apiKey,
         },
-        body: JSON.stringify({
-          model: config.model || DEFAULT_CONFIG.model,
-          messages: [
-            { role: 'user', content: 'Hi, please reply with JSON: {"status":"ok"}' },
-          ],
-          response_format: { type: 'json_object' },
-          max_tokens: 20,
-        }),
+        body: JSON.stringify(reqBody),
         signal: controller.signal,
       });
 
@@ -107,14 +132,31 @@
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        let errMsg = 'HTTP ' + res.status;
-        if (res.status === 401) errMsg = 'API Key 无效或未授权，请检查密钥是否正确';
-        else if (res.status === 402 || res.status === 429) errMsg = '账户额度耗尽或请求过于频繁';
-        else if (errText) {
+        let serverDetail = '';
+        if (errText) {
           try {
             const parsed = JSON.parse(errText);
-            if (parsed.error && parsed.error.message) errMsg = parsed.error.message;
-          } catch (e) {}
+            if (parsed && parsed.error && parsed.error.message) serverDetail = parsed.error.message;
+          } catch (e) {
+            serverDetail = errText.slice(0, 150);
+          }
+        }
+
+        let errMsg = 'HTTP ' + res.status;
+        if (res.status === 401) {
+          errMsg = serverDetail
+            ? ('API Key 认证失败 (401)：' + serverDetail + '。\n请检查密钥是否有效未过期，或前往 platform.deepseek.com 重新生成')
+            : 'API Key 认证失败 (401 Unauthorized)，请检查输入的密钥是否正确有效';
+        } else if (res.status === 402) {
+          errMsg = serverDetail
+            ? ('账户余额不足 (402)：' + serverDetail)
+            : 'DeepSeek 账户余额已耗尽，请前往 platform.deepseek.com 充值';
+        } else if (res.status === 429) {
+          errMsg = serverDetail
+            ? ('请求过于频繁 (429)：' + serverDetail)
+            : 'DeepSeek 接口请求过于频繁，请稍候再试';
+        } else if (serverDetail) {
+          errMsg = serverDetail;
         }
         return { ok: false, error: errMsg };
       }
@@ -135,7 +177,7 @@
    */
   async function analyzeNotes(cfg, notes, onProgress) {
     const config = Object.assign({}, DEFAULT_CONFIG, cfg || {});
-    const apiKey = (config.apiKey || '').trim();
+    const apiKey = cleanApiKey(config.apiKey);
     if (!apiKey) {
       throw new Error('未配置 DeepSeek API Key，请先在设置中填写');
     }
@@ -144,11 +186,14 @@
       return {};
     }
 
-    const endpoint = config.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+    const endpoint = (config.baseUrl || DEFAULT_CONFIG.baseUrl).replace(/\/+$/, '') + '/chat/completions';
     const BATCH_SIZE = 35;
     const allResults = {};
     const total = notes.length;
     let completed = 0;
+
+    const model = config.model || DEFAULT_CONFIG.model;
+    const isReasoner = model.includes('reasoner');
 
     for (let i = 0; i < notes.length; i += BATCH_SIZE) {
       const batch = notes.slice(i, i + BATCH_SIZE).map(n => ({
@@ -160,6 +205,18 @@
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 35000);
 
+      const reqBody = {
+        model: model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: '请分析以下 ' + batch.length + ' 篇小红书笔记：\n' + JSON.stringify(batch) },
+        ],
+      };
+      if (!isReasoner) {
+        reqBody.response_format = { type: 'json_object' };
+        reqBody.temperature = 0.2;
+      }
+
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -167,15 +224,7 @@
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + apiKey,
           },
-          body: JSON.stringify({
-            model: config.model || DEFAULT_CONFIG.model,
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user', content: '请分析以下 ' + batch.length + ' 篇小红书笔记：\n' + JSON.stringify(batch) },
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.2,
-          }),
+          body: JSON.stringify(reqBody),
           signal: controller.signal,
         });
 
@@ -183,14 +232,31 @@
 
         if (!res.ok) {
           const errText = await res.text().catch(() => '');
-          let errMsg = '调用 AI 失败 (HTTP ' + res.status + ')';
-          if (res.status === 401) errMsg = 'DeepSeek API Key 验证失败，请检查设置中的密钥';
-          else if (res.status === 402 || res.status === 429) errMsg = 'DeepSeek 额度耗尽或频率超限';
-          else if (errText) {
+          let serverDetail = '';
+          if (errText) {
             try {
               const j = JSON.parse(errText);
-              if (j.error && j.error.message) errMsg = j.error.message;
-            } catch (e) {}
+              if (j && j.error && j.error.message) serverDetail = j.error.message;
+            } catch (e) {
+              serverDetail = errText.slice(0, 150);
+            }
+          }
+
+          let errMsg = '调用 AI 失败 (HTTP ' + res.status + ')';
+          if (res.status === 401) {
+            errMsg = serverDetail
+              ? ('DeepSeek API 认证失败 (401)：' + serverDetail + '。请检查设置中的密钥是否有效未过期')
+              : 'DeepSeek API Key 验证失败 (401 Unauthorized)，请检查设置中的密钥是否有效或包含多余字符';
+          } else if (res.status === 402) {
+            errMsg = serverDetail
+              ? ('DeepSeek 账户余额不足 (402)：' + serverDetail)
+              : 'DeepSeek 账户余额已耗尽，请前往 platform.deepseek.com 充值';
+          } else if (res.status === 429) {
+            errMsg = serverDetail
+              ? ('DeepSeek 请求频率超限 (429)：' + serverDetail)
+              : 'DeepSeek 请求频率超限，请稍候再试';
+          } else if (serverDetail) {
+            errMsg = serverDetail;
           }
           throw new Error(errMsg);
         }
@@ -251,7 +317,11 @@
   async function saveConfig(cfg) {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.set({ [STORAGE_KEY_CONFIG]: cfg });
+        const toSave = Object.assign({}, cfg || {});
+        if (toSave.apiKey !== undefined) {
+          toSave.apiKey = cleanApiKey(toSave.apiKey);
+        }
+        await chrome.storage.local.set({ [STORAGE_KEY_CONFIG]: toSave });
         return true;
       }
     } catch (e) {}
@@ -307,6 +377,7 @@
   const RNAI = {
     DEFAULT_CONFIG: DEFAULT_CONFIG,
     DECISION_META: DECISION_META,
+    cleanApiKey: cleanApiKey,
     cleanJsonText: cleanJsonText,
     testConnection: testConnection,
     analyzeNotes: analyzeNotes,
