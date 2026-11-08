@@ -207,15 +207,23 @@ function applyState(st) {
   const scanBtn = $('rn-scan');
   const undoBtn = $('rn-undo');
 
-  startBtn.disabled = isRunning || !candCount || !selCount;
-  stopBtn.disabled = !isRunning;
-  scanBtn.disabled = isRunning;
+  const isScanning = !!st.scanning;
+
+  startBtn.disabled = isRunning || isScanning || !candCount || !selCount;
+  stopBtn.disabled = !isRunning && !isScanning;
+  scanBtn.disabled = isRunning || isScanning;
+
+  if (isScanning) {
+    scanBtn.textContent = '正在读取…';
+  } else {
+    scanBtn.textContent = '① 读取列表';
+  }
 
   // 动态更新两处撤销按钮（设置抽屉内 + 底部操作记录栏）
   const undoBtns = [$('rn-undo'), $('rn-log-undo')].filter(Boolean);
   const lastUndo = st.lastUndo;
   undoBtns.forEach(function (btn) {
-    if (isRunning) {
+    if (isRunning || isScanning) {
       btn.disabled = true;
     } else if (lastUndo && lastUndo.canUndo) {
       btn.disabled = false;
@@ -234,7 +242,11 @@ function applyState(st) {
   });
 
   const actionVerb = st.mode === 'unlike' ? '取消点赞' : '取消收藏';
-  if (isRunning) {
+  if (isScanning) {
+    const planned = Math.min(selCount, s.maxPerRun || 30);
+    startBtn.textContent = selCount ? (actionVerb + '（' + planned + ' 篇）') : actionVerb;
+    stopBtn.title = '点击即可随时停止当前列表扫描';
+  } else if (isRunning) {
     startBtn.textContent = '正在' + actionVerb + '…';
     stopBtn.title = '点击即可安全停止当前批量操作';
   } else {

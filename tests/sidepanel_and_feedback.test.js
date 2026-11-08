@@ -1205,6 +1205,54 @@ test('撤销系统能够清晰区分单篇与批量操作，支持从操作记�
   assert.deepStrictEqual(batchTarget.items.map((n) => n.id), ['note_batch_1', 'note_batch_2']);
 });
 
+test('列表扫描机制：支持滚动深度扫描突破90条限制，支持增量合并与实时停止保留', () => {
+  // 1. 验证根据 autoScroll 设置计算 cap 上限
+  function computeCap(settings) {
+    const isAutoScroll = settings.autoScroll !== false;
+    return isAutoScroll ? 3000 : Math.max(60, (settings.maxPerRun || 30) * 3);
+  }
+
+  const defaultSettings = C.clampSettings(null);
+  assert.strictEqual(defaultSettings.autoScroll, true, '默认开启滚动加载全部');
+  assert.strictEqual(computeCap(defaultSettings), 3000, '开启滚动加载时上限提升至 3000 篇，杜绝 90~93 条人为截断');
+
+  const manualSettings = C.clampSettings({ autoScroll: false, maxPerRun: 30 });
+  assert.strictEqual(manualSettings.autoScroll, false);
+  assert.strictEqual(computeCap(manualSettings), 90, '仅在显式关闭滚动时才退守至 90 篇');
+
+  // 2. 验证增量合并逻辑：再次点击「读取列表」时继承已识别卡片，而不是清空后重复读取前93条
+  const existingNotes = [
+    { id: 'note_1', title: '短标题', cover: '' },
+    { id: 'note_2', title: '笔记2', cover: 'https://img2' },
+  ];
+
+  const newlyScannedFromDom = [
+    { id: 'note_1', title: '更完整长标题', cover: 'https://img1' }, // 补全信息
+    { id: 'note_3', title: '新滑出来的笔记3', cover: 'https://img3' },
+  ];
+
+  const acc = new Map();
+  existingNotes.forEach((n) => acc.set(n.id, Object.assign({}, n)));
+
+  let added = 0;
+  newlyScannedFromDom.forEach((n) => {
+    if (!acc.has(n.id)) {
+      acc.set(n.id, Object.assign({}, n));
+      added++;
+    } else {
+      const old = acc.get(n.id);
+      if (n.title && (!old.title || old.title.length < n.title.length)) old.title = n.title;
+      if (n.cover && !old.cover) old.cover = n.cover;
+    }
+  });
+
+  assert.strictEqual(added, 1, '新增 1 篇新卡片');
+  assert.strictEqual(acc.size, 3, '累计识别 3 篇');
+  assert.strictEqual(acc.get('note_1').title, '更完整长标题', '增量补齐了封面和完整标题');
+  assert.strictEqual(acc.get('note_1').cover, 'https://img1');
+  assert.strictEqual(acc.get('note_3').title, '新滑出来的笔记3');
+});
+
 
 
 

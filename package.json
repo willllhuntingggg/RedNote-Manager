@@ -1,6 +1,6 @@
 {
   "name": "rednote-manager",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "小红书网页版批量取消收藏 / 取消点赞的 Chrome 扩展（Chrome 原生侧边栏，带限速与风控熔断）",
   "license": "GPL-3.0",

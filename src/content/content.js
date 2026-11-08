@@ -65,6 +65,7 @@
     history: [],
     xsecTokens: {},
     running: false,
+    scanning: false,
     stopRequested: false,
     stats: { ok: 0, fail: 0, risk: false, startedAt: 0, total: 0 },
     logs: [],
@@ -764,7 +765,7 @@
   /* ============================ DOM：滚动加载 ============================ */
 
   function findScrollContainer() {
-    const list = ['.feeds-container', '.user-page .feeds-container', '.note-list'];
+    const list = ['.feeds-container', '.user-page .feeds-container', '.note-list', '#userPostedFeeds', '#userCollectFeeds', '#userLikeFeeds'];
     for (let i = 0; i < list.length; i++) {
       const el = $(list[i]);
       if (el && el.scrollHeight > el.clientHeight + 60) return el;
@@ -775,11 +776,20 @@
   function scrollStep() {
     const el = findScrollContainer();
     if (el) {
-      el.scrollTop = Math.min(el.scrollHeight, el.scrollTop + Math.max(200, Math.round(el.clientHeight * 0.85)));
-      return el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+      const step = Math.max(250, Math.round(el.clientHeight * 0.85));
+      el.scrollTop = Math.min(el.scrollHeight, el.scrollTop + step);
+      el.dispatchEvent(new Event('scroll', { bubbles: true }));
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
     }
-    window.scrollBy(0, Math.max(300, Math.round(window.innerHeight * 0.85)));
-    return window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8;
+    const step = Math.max(350, Math.round(window.innerHeight * 0.85));
+    window.scrollBy(0, step);
+    window.dispatchEvent(new Event('scroll'));
+    const docHeight = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight,
+      document.documentElement.clientHeight
+    );
+    return window.scrollY + window.innerHeight >= docHeight - 20;
   }
 
   function scrollToTop() {
@@ -789,41 +799,108 @@
   }
 
   async function collectCandidates() {
-    // 重新扫描读取时，从干净的集合开始，严格采集当前页面客观渲染的合法卡片
-    const acc = new Map();
-    const merge = function () {
-      scanCards().forEach(function (n) {
-        if (!acc.has(n.id)) acc.set(n.id, n);
-      });
-    };
-    const cap = Math.max(60, state.settings.maxPerRun * 3);
-    const budget = 40000;
+    const m = state.settings.mode;
+    const M = C.MODES[m];
+    const isAutoScroll = state.settings.autoScroll !== false;
+    // 当开启「滚动加载全部」时，不再人为截断在 maxPerRun * 3 (如90条)，支持深度加载至 3000 条或页面末尾；
+    // 仅在明确关闭滚动时才退守至当前单批上限
+    const cap = isAutoScroll ? 3000 : Math.max(60, state.settings.maxPerRun * 3);
+    const budget = isAutoScroll ? 120000 : 15000;
     const started = nowMs();
 
-    scrollToTop();
-    await sleep(400);
+    // 增量合并：若当前模式已缓存有笔记，继承已有集合，避免重复扫描时丢弃或回退
+    const existing = (state.modeCache && state.modeCache[m]) || [];
+    const acc = new Map();
+    existing.forEach(function (n) {
+      if (n && n.id) acc.set(n.id, n);
+    });
+
+    const merge = function () {
+      let added = 0;
+      scanCards().forEach(function (n) {
+        if (!acc.has(n.id)) {
+          acc.set(n.id, n);
+          added++;
+        } else {
+          // 增量补全已有卡片可能缺失的封面、标题与安全凭证
+          const old = acc.get(n.id);
+          if (n.title && (!old.title || old.title.length < n.title.length)) old.title = n.title;
+          if (n.cover && !old.cover) old.cover = n.cover;
+          if (n.author && !old.author) old.author = n.author;
+          if (n.xsecToken && !old.xsecToken) { old.xsecToken = n.xsecToken; old.url = n.url; }
+        }
+      });
+      return added;
+    };
+
+    // 若此前没有扫描过任何笔记，先从顶部开始采集；若已有缓存，直接从当前视口继续向下滚读
+    if (!existing.length) {
+      scrollToTop();
+      await sleep(350);
+    }
+
     merge();
+    state.modeCache[m] = Array.from(acc.values());
+    syncActiveModePointers();
     broadcastState();
 
     let stall = 0;
+    let lastLogSize = acc.size;
+    let lastLogTime = nowMs();
+
     while (nowMs() - started < budget && acc.size < cap) {
+      if (state.stopRequested) {
+        log('已手动停止扫描，当前保留已识别的 ' + acc.size + ' 篇笔记', 'warn');
+        break;
+      }
+
       const before = acc.size;
       const atBottom = scrollStep();
-      await sleep(750);
+      await sleep(700);
       merge();
+
+      // 实时同步数据到全局状态与面板计数看板
+      state.modeCache[m] = Array.from(acc.values());
+      syncActiveModePointers();
       broadcastState();
 
-      if (acc.size > before) { stall = 0; continue; }
+      if (acc.size > before) {
+        stall = 0;
+        // 每新识别出卡片，平滑打印阶段性进度（避免刷屏，间隔至少 15 条或 2.5 秒）
+        if (acc.size - lastLogSize >= 15 || nowMs() - lastLogTime >= 2500) {
+          log('正在读取「' + (M ? M.tabLabel : '笔记') + '」… 已累计识别 ' + acc.size + ' 篇', 'info');
+          lastLogSize = acc.size;
+          lastLogTime = nowMs();
+        }
+        continue;
+      }
+
       if (atBottom) {
         stall++;
-        if (stall >= 2) break;
-        await sleep(800);
+        // 容错提升：至少连续 4 次检测到底部且完全无新卡片，才确认已达真实末尾（避免网络加载延迟导致早退）
+        if (stall >= 4) break;
+
+        // 核心技巧：在底部触发微小的上下抖动回弹，强制唤醒可能休眠的 IntersectionObserver 或滚动监听器
+        const el = findScrollContainer();
+        if (el) {
+          el.scrollTop = Math.max(0, el.scrollTop - 40);
+          await sleep(120);
+          el.scrollTop = el.scrollTop + 40;
+          el.dispatchEvent(new Event('scroll', { bubbles: true }));
+        } else {
+          window.scrollBy(0, -50);
+          await sleep(120);
+          window.scrollBy(0, 50);
+          window.dispatchEvent(new Event('scroll'));
+        }
+
+        await sleep(900);
         merge();
       }
     }
+
     scrollToTop();
     const result = Array.from(acc.values());
-    const m = state.settings.mode;
     state.modeCache[m] = result;
     syncActiveModePointers();
     return result;
@@ -2265,9 +2342,14 @@
   }
 
   async function scanOnly() {
-    if (state.running) return;
+    if (state.running || state.scanning) return;
     if (!state.mounted) mount();
     const M = C.MODES[state.settings.mode];
+    const prevCount = state.candidates ? state.candidates.length : 0;
+    state.running = true;
+    state.scanning = true;
+    state.stopRequested = false;
+    broadcastState();
     try {
       await assertOwnProfile();
       await ensureTab(M.tabLabel);
@@ -2280,9 +2362,20 @@
         return;
       }
       refreshPageCards();
-      log('扫描完成：读到 ' + state.candidates.length + ' 篇。可以直接在页面上点卡片左上角勾选，或在侧边栏中搜索后「全选命中」', 'ok');
+      const newAdded = Math.max(0, state.candidates.length - prevCount);
+      if (prevCount > 0 && newAdded > 0) {
+        log('扫描完成：新增识别 ' + newAdded + ' 篇，累计共读到 ' + state.candidates.length + ' 篇。可以直接在页面上点卡片左上角勾选，或在侧边栏中搜索后「全选命中」', 'ok');
+      } else {
+        log('扫描完成：读到 ' + state.candidates.length + ' 篇。可以直接在页面上点卡片左上角勾选，或在侧边栏中搜索后「全选命中」', 'ok');
+      }
     } catch (e) {
       log('扫描失败：' + ((e && e.message) || e), 'err');
+    } finally {
+      state.running = false;
+      state.scanning = false;
+      state.stopRequested = false;
+      broadcastState();
+      refreshPageCards();
     }
   }
 
@@ -2394,9 +2487,13 @@
   }
 
   function requestStop() {
-    if (!state.running) return;
+    if (!state.running && !state.scanning) return;
     state.stopRequested = true;
-    log('正在停止…（当前这条请求会走完）', 'warn');
+    if (state.scanning) {
+      log('正在停止扫描列表…', 'warn');
+    } else {
+      log('正在停止…（当前这条请求会走完）', 'warn');
+    }
   }
 
   async function diagnose() {
@@ -2769,6 +2866,7 @@
     return {
       mounted: state.mounted,
       running: state.running,
+      scanning: !!state.scanning,
       mode: mode,
       modeLabel: M ? M.label : '',
       candidates: state.candidates.map(formatNote),
