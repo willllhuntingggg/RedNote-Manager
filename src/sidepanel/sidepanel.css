@@ -343,6 +343,50 @@ body {
   align-items: center;
 }
 
+.rn-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.rn-search-input {
+  width: 100%;
+  padding-right: 26px;
+  box-sizing: border-box;
+}
+
+.rn-search-clear {
+  all: unset;
+  cursor: pointer;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.rn-search-clear:hover {
+  background: rgba(255, 46, 77, 0.85);
+  color: #fff;
+}
+
+.rn-search-clear[hidden] {
+  display: none !important;
+}
+
 .rn-input {
   all: unset;
   background: var(--bg-card);

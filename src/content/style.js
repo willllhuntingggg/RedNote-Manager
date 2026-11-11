@@ -59,9 +59,8 @@ globalThis.RNStyle = `
     border-radius: 8px !important;
   }
   .rn-card-dim {
-    opacity: 0.38 !important;
-    filter: saturate(0.65) !important;
-    transition: opacity 0.15s ease !important;
+    opacity: 0.62 !important;
+    transition: opacity 0.18s ease !important;
   }
   .rn-card-done {
     opacity: 0.42 !important;
@@ -101,6 +100,70 @@ globalThis.RNStyle = `
     opacity: 0 !important;
     transform: translateX(-50%) translateY(28px) scale(0.92) !important;
     pointer-events: none !important;
+  }
+
+  /* 页面端筛选状态指示胶囊 */
+  .rn-filter-pill {
+    position: fixed !important;
+    bottom: 24px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 2147483602 !important;
+    display: none !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 6px 14px 6px 12px !important;
+    background: rgba(22, 22, 28, 0.94) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 30px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 46, 77, 0.22) !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    pointer-events: auto !important;
+    user-select: none !important;
+    transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease !important;
+  }
+  .rn-filter-pill.rn-show {
+    display: flex !important;
+  }
+  .rn-filter-pill.rn-pill-stacked {
+    bottom: 76px !important;
+  }
+  .rn-filter-pill-icon {
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+  .rn-filter-pill-text {
+    font-weight: 500 !important;
+    color: #f1f1f5 !important;
+    white-space: nowrap !important;
+  }
+  .rn-filter-pill-text b {
+    color: #ff4d6a !important;
+    font-weight: 700 !important;
+    margin: 0 2px !important;
+  }
+  .rn-filter-pill-clear {
+    all: unset !important;
+    cursor: pointer !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    border-radius: 12px !important;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    margin-left: 4px !important;
+    transition: all 0.15s ease !important;
+    white-space: nowrap !important;
+  }
+  .rn-filter-pill-clear:hover {
+    background: rgba(255, 46, 77, 0.85) !important;
+    border-color: #ff2e4d !important;
+    color: #fff !important;
   }
   .rn-bar-badge {
     display: flex !important;

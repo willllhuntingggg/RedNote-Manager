@@ -71,7 +71,24 @@
     logs: [],
     mounted: false,
     els: null,
+    sidepanelConnected: typeof chrome !== 'undefined' && (!chrome.runtime || !chrome.runtime.onConnect),
   };
+
+  // 监听侧边栏长链接生命周期：侧边栏关闭时自动释放页面卡片暗化
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onConnect) {
+    try {
+      chrome.runtime.onConnect.addListener(function (port) {
+        if (port.name === 'rn-sidepanel') {
+          state.sidepanelConnected = true;
+          refreshPageCards();
+          port.onDisconnect.addListener(function () {
+            state.sidepanelConnected = false;
+            refreshPageCards();
+          });
+        }
+      });
+    } catch (e) {}
+  }
 
   /** 同步 candidates / selected 指针指向当前活跃模式的独立缓存 */
   function syncActiveModePointers() {
@@ -1158,6 +1175,8 @@
     const rawQuery = (state.settings.keyword || '').trim();
     const terms = C.parseKeywords(rawQuery);
     const cards = cardNodes();
+    let matchedCount = 0;
+    let relevantCount = 0;
 
     for (let i = 0; i < cards.length; i++) {
       const el = cards[i];
@@ -1172,6 +1191,7 @@
         el.classList.remove('rn-card-sel', 'rn-card-dim', 'rn-card-done');
         continue;
       }
+      relevantCount++;
 
       if (!el.dataset.rnPos) {
         try {
@@ -1195,9 +1215,11 @@
         { id: id, title: (noteById(id) || noteFromCard(el) || {}).title || '' },
         terms
       );
+      if (match) matchedCount++;
 
       el.classList.toggle('rn-card-sel', sel && !done);
-      el.classList.toggle('rn-card-dim', !!rawQuery && !match);
+      // 只有在侧边栏保持连接打开时才对非命中卡片进行视觉暗化
+      el.classList.toggle('rn-card-dim', state.sidepanelConnected && !!rawQuery && !match);
       badge.classList.toggle('rn-on', sel && !done);
       badge.classList.toggle('rn-done', done);
       badge.setAttribute('aria-checked', sel ? 'true' : 'false');
@@ -1205,6 +1227,33 @@
         ? '这篇已经处理过了'
         : (sel ? '取消勾选（Shift 点击可区间多选）' : '勾选这篇（Shift 点击可区间多选）');
     }
+
+    updateFilterPill(rawQuery, matchedCount, relevantCount);
+  }
+
+  function updateFilterPill(rawQuery, matchedCount, totalCount) {
+    if (!state.els || !state.els.filterPill) return;
+    const pill = state.els.filterPill;
+    const txt = state.els.filterPillText;
+    const q = (rawQuery !== undefined ? rawQuery : (state.settings.keyword || '')).trim();
+
+    if (!state.sidepanelConnected || !q) {
+      pill.classList.remove('rn-show', 'rn-pill-stacked');
+      return;
+    }
+
+    const m = matchedCount !== undefined ? matchedCount : 0;
+    const t = totalCount !== undefined ? totalCount : 0;
+    const isWrapVisible = state.els.wrap && !state.els.wrap.classList.contains('rn-hidden');
+    pill.classList.toggle('rn-pill-stacked', isWrapVisible);
+
+    const escQ = q.length > 12 ? q.slice(0, 12) + '…' : q;
+    if (m === 0 && t > 0) {
+      txt.innerHTML = '正在筛选：“<b>' + esc(escQ) + '</b>”（当前页面 0 篇匹配）';
+    } else {
+      txt.innerHTML = '正在筛选：“<b>' + esc(escQ) + '</b>”（已匹配 <b>' + m + '</b>/' + t + ' 篇）';
+    }
+    pill.classList.add('rn-show');
   }
 
   function clearPageCards() {
@@ -1217,6 +1266,9 @@
         delete el.dataset.rnId;
         delete el.dataset.rnPos;
       });
+      if (state.els && state.els.filterPill) {
+        state.els.filterPill.classList.remove('rn-show', 'rn-pill-stacked');
+      }
       document.documentElement.removeAttribute('data-rn-tab');
     } catch (e) { /* 忽略 */ }
   }
@@ -2641,6 +2693,17 @@
     ].join('');
     root.appendChild(wrap);
 
+    // 2.5 页面端筛选状态指示胶囊（让用户一眼感知搜索筛选状态，并支持一键恢复全部笔记）
+    const filterPill = document.createElement('div');
+    filterPill.className = 'rn-filter-pill';
+    filterPill.id = 'rn-filter-pill';
+    filterPill.innerHTML = [
+      '<span class="rn-filter-pill-icon">🔍</span>',
+      '<span class="rn-filter-pill-text" id="rn-filter-pill-text"></span>',
+      '<button class="rn-filter-pill-clear" id="rn-filter-pill-clear" type="button" title="清空搜索词并恢复全部卡片">清空 ×</button>',
+    ].join('');
+    root.appendChild(filterPill);
+
     // 3. 叠卡速览交互模态框
     const stackOverlay = document.createElement('div');
     stackOverlay.className = 'rn-stack-overlay';
@@ -2720,6 +2783,9 @@
       clear: $('#rn-bar-clear', root),
       open: $('#rn-bar-open', root),
       stack: $('#rn-bar-stack', root),
+      filterPill: filterPill,
+      filterPillText: $('#rn-filter-pill-text', root),
+      filterPillClear: $('#rn-filter-pill-clear', root),
     };
 
     stackState.els = {
@@ -2792,6 +2858,18 @@
       } catch (e) {}
       showToast('已请求展开侧边栏（也可随时点击右上角插件图标）');
     });
+
+    if (state.els.filterPillClear) {
+      state.els.filterPillClear.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        state.settings.keyword = '';
+        afterSelectionChange();
+        try {
+          quietly(chrome.runtime.sendMessage({ type: 'RN_FILTER_CLEARED' }));
+        } catch (e) {}
+        showToast('已清空搜索筛选条件');
+      });
+    }
 
     $('#rn-bar-stack', root).addEventListener('click', function (ev) {
       ev.stopPropagation();
@@ -3009,7 +3087,17 @@
       return;
     }
     if (msg.type === 'RN_SET_KEYWORD') {
+      state.sidepanelConnected = true;
       state.settings.keyword = String(msg.keyword || '').slice(0, 200);
+      saveSettings();
+      state.anchorId = null;
+      afterSelectionChange();
+      if (stackState.open) syncStackListToFilter();
+      sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_FILTER_CLEARED') {
+      state.settings.keyword = '';
       saveSettings();
       state.anchorId = null;
       afterSelectionChange();

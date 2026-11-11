@@ -1277,6 +1277,44 @@ test('微信赞赏支持体系：资源存在且多触点组件结构完整', ()
   assert.ok(readmeContent.includes('assets/sponsor.jpg'), 'README 需引用赞赏码图片');
 });
 
+test('检索过滤感知与释放机制：侧边栏关闭时释放卡片暗化，支持页面端指示胶囊与一键重置', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  // 1. 验证卡片暗化判定逻辑（侧边栏断开时绝对不可暗化网页卡片）
+  const cards = [
+    { id: '1', title: '杭州旅行路线攻略' },
+    { id: '2', title: '成都地道火锅探店' },
+  ];
+  const query = '成都';
+  const terms = C.parseKeywords(query);
+
+  function evalCardDim(card, rawQuery, isConnected) {
+    const match = !rawQuery || C.matchKeywords(card, terms);
+    return isConnected && !!rawQuery && !match;
+  }
+
+  // 侧边栏打开时：非命中卡片被暗化
+  assert.strictEqual(evalCardDim(cards[0], query, true), true, '未命中且侧边栏连接时应暗化');
+  assert.strictEqual(evalCardDim(cards[1], query, true), false, '命中卡片不应暗化');
+
+  // 侧边栏关闭时（isConnected=false）：哪怕有检索词，所有卡片均绝对不可暗化，恢复小红书原本色彩
+  assert.strictEqual(evalCardDim(cards[0], query, false), false, '侧边栏关闭时必须自动解除卡片暗化');
+  assert.strictEqual(evalCardDim(cards[1], query, false), false, '侧边栏关闭时卡片正常展示');
+
+  // 2. 验证 style.js 软化样式与页面胶囊样式
+  const styleContent = fs.readFileSync(path.resolve(__dirname, '../src/content/style.js'), 'utf8');
+  assert.ok(styleContent.includes('rn-filter-pill'), '必须包含页面端筛选指示胶囊样式');
+  assert.ok(styleContent.includes('rn-pill-stacked'), '胶囊需支持与底部条联动堆叠');
+  assert.ok(!styleContent.includes('filter: saturate(0.65)'), '已移除过度失真的强降饱和度滤镜');
+  assert.ok(styleContent.includes('opacity: 0.62'), '暗化透明度已软化至克制的 0.62');
+
+  // 3. 验证 sidepanel.html 包含搜索快捷清空按钮
+  const sidepanelHtml = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.html'), 'utf8');
+  assert.ok(sidepanelHtml.includes('id="rn-search-clear"'), '侧边栏搜索框需提供快捷清除按钮');
+});
+
+
 
 
 

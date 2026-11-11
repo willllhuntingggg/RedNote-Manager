@@ -22,6 +22,27 @@ let aiTagsCache = {};
 let activeTagFilter = 'all';
 let isAiAnalyzing = false;
 let showProcessedNotes = false;
+let sidepanelPort = null;
+
+function ensurePortConnection(tabId) {
+  if (typeof tabId !== 'number') return;
+  if (sidepanelPort && sidepanelPort.__tabId === tabId) return;
+  if (sidepanelPort) {
+    try { sidepanelPort.disconnect(); } catch (e) {}
+    sidepanelPort = null;
+  }
+  try {
+    if (chrome.tabs && chrome.tabs.connect) {
+      sidepanelPort = chrome.tabs.connect(tabId, { name: 'rn-sidepanel' });
+      sidepanelPort.__tabId = tabId;
+      sidepanelPort.onDisconnect.addListener(function () {
+        sidepanelPort = null;
+      });
+    }
+  } catch (e) {
+    sidepanelPort = null;
+  }
+}
 
 /* ============================ 与当前标签页通信 ============================ */
 
@@ -36,6 +57,7 @@ async function sendToTab(type, data) {
   const tab = await getActiveTab();
   if (!tab || typeof tab.id !== 'number') return null;
   activeTabId = tab.id;
+  ensurePortConnection(activeTabId);
   try {
     return await chrome.tabs.sendMessage(activeTabId, Object.assign({ type: type }, data || {}));
   } catch (e) {
@@ -51,6 +73,7 @@ async function requestState() {
     return;
   }
   activeTabId = tab.id;
+  ensurePortConnection(activeTabId);
 
   const url = tab.url || '';
   const isXhs = /xiaohongshu\.com|rednote\.com/.test(url);
@@ -264,9 +287,13 @@ function applyState(st) {
 
   // 搜索框状态同步与即时筛选
   const qEl = $('rn-q');
+  const qClearEl = $('rn-search-clear');
   const userEditing = qEl && document.activeElement === qEl;
   if (!userEditing && s.keyword !== undefined && qEl && s.keyword !== qEl.value) {
     qEl.value = s.keyword;
+  }
+  if (qClearEl && qEl) {
+    qClearEl.hidden = !qEl.value;
   }
   const currentQuery = (qEl ? qEl.value : '').trim();
 
@@ -689,7 +716,25 @@ function bindEvents() {
     syncCurrentFilterToStack();
   }
 
+  const qClear = $('rn-search-clear');
+
+  function clearSearchInput() {
+    q.value = '';
+    if (qClear) qClear.hidden = true;
+    activeTagFilter = 'all';
+    doSearchLocally();
+    sendToTab('RN_SET_KEYWORD', { keyword: '' });
+  }
+
+  if (qClear) {
+    qClear.addEventListener('click', function () {
+      clearSearchInput();
+      q.focus();
+    });
+  }
+
   q.addEventListener('input', function () {
+    if (qClear) qClear.hidden = !q.value;
     // 1. 本地即时计算并渲染搜索结果，并同步叠卡卡组
     doSearchLocally();
 
@@ -702,10 +747,7 @@ function bindEvents() {
 
   q.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
-      q.value = '';
-      activeTagFilter = 'all';
-      doSearchLocally();
-      sendToTab('RN_SET_KEYWORD', { keyword: '' });
+      clearSearchInput();
     }
   });
 
@@ -1084,18 +1126,34 @@ function bindEvents() {
     if (!msg || typeof msg.type !== 'string') return;
     if (msg.type === 'RN_STATE_UPDATED' && msg.state) {
       applyState(msg.state);
+    } else if (msg.type === 'RN_FILTER_CLEARED') {
+      const qInput = $('rn-q');
+      const qClearBtn = $('rn-search-clear');
+      if (qInput) qInput.value = '';
+      if (qClearBtn) qClearBtn.hidden = true;
+      activeTagFilter = 'all';
+      doSearchLocally();
     }
   });
 
   // 监听标签页切换与更新
   chrome.tabs.onActivated.addListener(function (activeInfo) {
     activeTabId = activeInfo.tabId;
+    ensurePortConnection(activeTabId);
     requestState();
   });
 
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
     if (tabId === activeTabId && changeInfo.status === 'complete') {
+      ensurePortConnection(activeTabId);
       requestState();
+    }
+  });
+
+  window.addEventListener('beforeunload', function () {
+    if (sidepanelPort) {
+      try { sidepanelPort.disconnect(); } catch (e) {}
+      sidepanelPort = null;
     }
   });
 }
