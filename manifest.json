@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RedNote Manager · 小红书批量取消收藏/点赞",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "在小红书网页版批量取消收藏、取消点赞：原生侧边栏操作，限速 + 批次冷却 + 风控熔断，支持一键撤销。",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "sidePanel"],
