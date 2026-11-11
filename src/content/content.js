@@ -1423,6 +1423,7 @@
       tag: 'all',
       explicitIds: null,
     },
+    sessionProcessed: 0,
   };
 
   try {
@@ -1531,6 +1532,7 @@
     stackState.history = [];
     stackState.open = true;
     stackState.working = false;
+    stackState.sessionProcessed = 0;
 
     if (stackState.randomMode && list.length > 1) {
       stackState.index = Math.floor(Math.random() * list.length);
@@ -1562,8 +1564,10 @@
   }
 
   function closeStackView() {
+    const processed = stackState.sessionProcessed || 0;
     stackState.open = false;
     stackState.working = false;
+    stackState.sessionProcessed = 0;
     if (stackState.els && stackState.els.overlay) {
       stackState.els.overlay.classList.remove('rn-open');
     }
@@ -1574,6 +1578,11 @@
       state.els.host.style.pointerEvents = 'none';
     }
     refreshPageCards();
+    if (processed >= 3) {
+      log('🎉 叠卡连续清理完成（共 ' + processed + ' 篇）！若帮到了你，请作者喝杯瑞幸/奶茶吧 🥤', 'ok', {
+        isSponsor: true,
+      });
+    }
   }
 
   function syncStackListToFilter(filterPatch) {
@@ -1671,10 +1680,15 @@
         hintReason += (hintReason ? ' + ' : '') + '搜索「' + stackState.filter.keyword + '」';
       }
 
-      stackState.els.title.textContent = hintReason
-        ? '当前' + hintReason + '下笔记已全部处理完成'
-        : '当前模式下已无待处理笔记';
-      stackState.els.author.textContent = '可在右侧侧边栏切换 Tab、Tag 标签或修改搜索词';
+      if (stackState.sessionProcessed > 0) {
+        stackState.els.title.textContent = '🎉 连续清理完成！已处理 ' + stackState.sessionProcessed + ' 篇笔记';
+        stackState.els.author.textContent = '若觉得好用，欢迎在侧边栏请作者喝杯瑞幸/奶茶 🥤';
+      } else {
+        stackState.els.title.textContent = hintReason
+          ? '当前' + hintReason + '下笔记已全部处理完成'
+          : '当前模式下已无待处理笔记';
+        stackState.els.author.textContent = '可在右侧侧边栏切换 Tab、Tag 标签或修改搜索词';
+      }
       stackState.els.id.textContent = '';
       stackState.els.btnPrev.disabled = true;
       stackState.els.btnNext.disabled = true;
@@ -2059,13 +2073,19 @@
               title: titleOf(note),
               mode: 'unlike',
             });
-            showToast('已取消点赞');
+            stackState.sessionProcessed = (stackState.sessionProcessed || 0) + 1;
+            if (stackState.sessionProcessed % 10 === 0) {
+              showToast('🎉 已连续清理 ' + stackState.sessionProcessed + ' 篇！');
+            } else {
+              showToast('已取消点赞');
+            }
 
             // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
             handleCardProcessedFlyOut(note.id);
           } else {
             note._liked = true;
             unmarkProcessed('unlike', note.id);
+            stackState.sessionProcessed = Math.max(0, (stackState.sessionProcessed || 0) - 1);
             log('已重新点赞：' + titleOf(note), 'ok');
             showToast('已点赞 ❤️');
           }
@@ -2135,13 +2155,19 @@
               title: titleOf(note),
               mode: 'uncollect',
             });
-            showToast('已取消收藏');
+            stackState.sessionProcessed = (stackState.sessionProcessed || 0) + 1;
+            if (stackState.sessionProcessed % 10 === 0) {
+              showToast('🎉 已连续清理 ' + stackState.sessionProcessed + ' 篇！');
+            } else {
+              showToast('已取消收藏');
+            }
 
             // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
             handleCardProcessedFlyOut(note.id);
           } else {
             note._collected = true;
             unmarkProcessed('uncollect', note.id);
+            stackState.sessionProcessed = Math.max(0, (stackState.sessionProcessed || 0) - 1);
             log('已重新收藏：' + titleOf(note), 'ok');
             showToast('已收藏 ⭐');
           }
