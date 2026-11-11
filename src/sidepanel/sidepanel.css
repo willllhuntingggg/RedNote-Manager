@@ -1015,12 +1015,24 @@ body {
 .rn-sponsor-btn {
   font-size: 13px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rn-cup-icon {
+  display: block;
+  transition: transform 0.15s ease;
 }
 
 .rn-sponsor-btn:hover {
   background: rgba(255, 92, 120, 0.18);
   border-color: rgba(255, 92, 120, 0.45);
   color: #ff5c78;
+}
+
+.rn-sponsor-btn:hover .rn-cup-icon {
+  transform: rotate(-6deg) scale(1.12);
 }
 
 /* 设置面板里的赞赏区域 */

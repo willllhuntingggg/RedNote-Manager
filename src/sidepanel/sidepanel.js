@@ -509,7 +509,7 @@ function renderLogs(logs) {
         undoHtml = '<button class="rn-line-undo-btn" data-undo-type="' + esc(l.undoType || 'single') + '" data-note-id="' + esc(l.noteId || '') + '" data-batch-id="' + esc(l.batchId || '') + '" data-mode="' + esc(l.mode || '') + '" type="button" title="' + esc(btnTitle) + '">' + esc(btnText) + '</button>';
       }
     } else if (l.isSponsor) {
-      undoHtml = '<button class="rn-line-sponsor-btn" type="button" title="支持作者 · 请喝咖啡 ☕">☕ 请喝咖啡</button>';
+      undoHtml = '<button class="rn-line-sponsor-btn" type="button" title="支持作者 · 请喝一杯 🥤">🥤 请喝一杯</button>';
     }
     return '<div class="rn-line' + cls + '">' +
       '<span class="rn-t">' + esc(l.t) + '</span> ' +

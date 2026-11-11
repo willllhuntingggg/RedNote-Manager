@@ -1273,7 +1273,7 @@ test('微信赞赏支持体系：资源存在且多触点组件结构完整', ()
 
   // 3. 验证 README.md 包含赞赏章节
   const readmeContent = fs.readFileSync(path.resolve(__dirname, '../README.md'), 'utf8');
-  assert.ok(readmeContent.includes('## ☕ 支持与赞赏'), 'README 必须包含赞赏版块');
+  assert.ok(readmeContent.includes('支持与赞赏'), 'README 必须包含赞赏版块');
   assert.ok(readmeContent.includes('assets/sponsor.jpg'), 'README 需引用赞赏码图片');
 });
 

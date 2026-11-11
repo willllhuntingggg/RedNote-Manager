@@ -97,8 +97,9 @@
     return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
 
-  function log(msg, kind) {
-    state.logs.push({ t: stamp(), msg: String(msg), kind: kind || 'info' });
+  function log(msg, kind, extra) {
+    const entry = Object.assign({ t: stamp(), msg: String(msg), kind: kind || 'info' }, extra || {});
+    state.logs.push(entry);
     if (state.logs.length > LOG_CAP) state.logs.shift();
     broadcastState();
     if (kind === 'err') console.warn('[RedNote Manager]', msg);
@@ -2338,8 +2339,8 @@
           mode: s.mode,
         });
 
-        if (state.stats.ok >= 3) {
-          log('🎉 批量清理完成！若帮到了你，欢迎请作者喝杯咖啡 ☕', 'ok', {
+        if (state.stats.ok > 0) {
+          log('🎉 批量清理完成！若帮到了你，请作者喝杯瑞幸/奶茶吧 🥤', 'ok', {
             isSponsor: true,
           });
         }

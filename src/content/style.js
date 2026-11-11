@@ -59,13 +59,13 @@ globalThis.RNStyle = `
     border-radius: 8px !important;
   }
   .rn-card-dim {
-    opacity: 0.3 !important;
-    filter: saturate(0.55) !important;
+    opacity: 0.38 !important;
+    filter: saturate(0.65) !important;
     transition: opacity 0.15s ease !important;
   }
   .rn-card-done {
-    opacity: 0.28 !important;
-    filter: grayscale(0.85) !important;
+    opacity: 0.42 !important;
+    filter: grayscale(0.75) !important;
     pointer-events: none !important;
     transition: opacity 0.25s ease, filter 0.25s ease !important;
   }
