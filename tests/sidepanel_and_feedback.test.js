@@ -1253,6 +1253,30 @@ test('列表扫描机制：支持滚动深度扫描突破90条限制，支持增
   assert.strictEqual(acc.get('note_3').title, '新滑出来的笔记3');
 });
 
+test('微信赞赏支持体系：资源存在且多触点组件结构完整', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  // 1. 验证压缩后的赞赏码资源存在且体积适中
+  const sponsorImgPath = path.resolve(__dirname, '../assets/sponsor.jpg');
+  assert.strictEqual(fs.existsSync(sponsorImgPath), true, 'assets/sponsor.jpg 必须存在');
+  const stat = fs.statSync(sponsorImgPath);
+  assert.ok(stat.size > 0 && stat.size < 150 * 1024, '赞赏码图片应经过压缩且体积小于 150KB');
+
+  // 2. 验证 sidepanel.html 包含了所有触点与弹窗
+  const htmlContent = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.html'), 'utf8');
+  assert.ok(htmlContent.includes('id="rn-btn-sponsor-hdr"'), 'Header 触点按钮必须存在');
+  assert.ok(htmlContent.includes('id="rn-btn-sponsor-settings"'), '设置面板触点按钮必须存在');
+  assert.ok(htmlContent.includes('id="rn-sponsor-modal"'), '赞赏弹窗必须存在');
+  assert.ok(htmlContent.includes('id="rn-sponsor-close"'), '弹窗关闭按钮必须存在');
+  assert.ok(htmlContent.includes('assets/sponsor.jpg'), '弹窗内需引用本地赞赏码图片');
+
+  // 3. 验证 README.md 包含赞赏章节
+  const readmeContent = fs.readFileSync(path.resolve(__dirname, '../README.md'), 'utf8');
+  assert.ok(readmeContent.includes('## ☕ 支持与赞赏'), 'README 必须包含赞赏版块');
+  assert.ok(readmeContent.includes('assets/sponsor.jpg'), 'README 需引用赞赏码图片');
+});
+
 
 
 

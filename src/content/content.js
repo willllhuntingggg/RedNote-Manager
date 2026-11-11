@@ -2337,6 +2337,12 @@
           count: state.stats.ok,
           mode: s.mode,
         });
+
+        if (state.stats.ok >= 3) {
+          log('🎉 批量清理完成！若帮到了你，欢迎请作者喝杯咖啡 ☕', 'ok', {
+            isSponsor: true,
+          });
+        }
       }
     }
   }

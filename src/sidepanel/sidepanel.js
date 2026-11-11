@@ -508,6 +508,8 @@ function renderLogs(logs) {
         const btnTitle = l.undoType === 'batch' ? ('撤销此批处理的 ' + (l.count || '') + ' 篇笔记') : ('撤销对「' + (l.title || l.noteId || '') + '」的操作');
         undoHtml = '<button class="rn-line-undo-btn" data-undo-type="' + esc(l.undoType || 'single') + '" data-note-id="' + esc(l.noteId || '') + '" data-batch-id="' + esc(l.batchId || '') + '" data-mode="' + esc(l.mode || '') + '" type="button" title="' + esc(btnTitle) + '">' + esc(btnText) + '</button>';
       }
+    } else if (l.isSponsor) {
+      undoHtml = '<button class="rn-line-sponsor-btn" type="button" title="支持作者 · 请喝咖啡 ☕">☕ 请喝咖啡</button>';
     }
     return '<div class="rn-line' + cls + '">' +
       '<span class="rn-t">' + esc(l.t) + '</span> ' +
@@ -517,6 +519,20 @@ function renderLogs(logs) {
   }).join('');
   container.innerHTML = html;
   if (wasAtBottom) container.scrollTop = container.scrollHeight;
+}
+
+function openSponsorModal() {
+  const modal = $('rn-sponsor-modal');
+  if (modal) {
+    modal.hidden = false;
+  }
+}
+
+function closeSponsorModal() {
+  const modal = $('rn-sponsor-modal');
+  if (modal) {
+    modal.hidden = true;
+  }
 }
 
 /* ============================ 事件绑定 ============================ */
@@ -578,6 +594,12 @@ function bindEvents() {
   const logContainer = $('rn-log');
   if (logContainer) {
     logContainer.addEventListener('click', async function (ev) {
+      const sponsorBtn = ev.target && ev.target.closest ? ev.target.closest('.rn-line-sponsor-btn') : null;
+      if (sponsorBtn) {
+        ev.stopPropagation();
+        openSponsorModal();
+        return;
+      }
       const btn = ev.target && ev.target.closest ? ev.target.closest('.rn-line-undo-btn:not(.rn-undone)') : null;
       if (!btn) return;
       ev.stopPropagation();
@@ -1017,6 +1039,42 @@ function bindEvents() {
       alert('已清空本地 AI 标签缓存！');
     });
   }
+
+  // 赞赏支持弹窗事件绑定
+  const sponsorModal = $('rn-sponsor-modal');
+  const sponsorCloseBtn = $('rn-sponsor-close');
+  const hdrSponsorBtn = $('rn-btn-sponsor-hdr');
+  const settingsSponsorBtn = $('rn-btn-sponsor-settings');
+
+  if (hdrSponsorBtn) {
+    hdrSponsorBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openSponsorModal();
+    });
+  }
+  if (settingsSponsorBtn) {
+    settingsSponsorBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openSponsorModal();
+    });
+  }
+  if (sponsorCloseBtn) {
+    sponsorCloseBtn.addEventListener('click', function () {
+      closeSponsorModal();
+    });
+  }
+  if (sponsorModal) {
+    sponsorModal.addEventListener('click', function (ev) {
+      if (ev.target === sponsorModal) {
+        closeSponsorModal();
+      }
+    });
+  }
+  window.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && sponsorModal && !sponsorModal.hidden) {
+      closeSponsorModal();
+    }
+  });
 
   // 监听来自 content.js 的主动状态广播（保证实时性）
   chrome.runtime.onMessage.addListener(function (msg) {

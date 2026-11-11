@@ -151,6 +151,17 @@ assets/                图标
 npm test                                  # 17 个纯逻辑单测，无需安装外部依赖
 ```
 
+## ☕ 支持与赞赏
+
+RedNote Manager 是一款开源、免费、无广告的实用效率工具。
+
+如果它帮你在整理小红书收藏与点赞时节省了宝贵时间，欢迎请作者喝杯咖啡，支持后续的持续维护与体验优化！
+
+<div align="center">
+  <img src="assets/sponsor.jpg" width="220" alt="微信赞赏码" />
+  <p><em>“啥也别说了老铁！” · 感谢每一份鼓励与支持 ❤️</em></p>
+</div>
+
 ## 开源协议
 
 本项目采用 [GNU General Public License v3.0 (GPL-3.0)](LICENSE) 协议开源。

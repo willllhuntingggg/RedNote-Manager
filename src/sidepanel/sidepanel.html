@@ -17,7 +17,10 @@
           <span class="rn-safe-hint">🛡️ 安全保护中</span>
         </div>
       </div>
-      <button class="rn-icobtn" id="rn-gear" type="button" title="设置与维护">⚙</button>
+      <div class="rn-hdr-actions">
+        <button class="rn-icobtn rn-sponsor-btn" id="rn-btn-sponsor-hdr" type="button" title="请作者喝杯咖啡 ☕">☕</button>
+        <button class="rn-icobtn" id="rn-gear" type="button" title="设置与维护">⚙</button>
+      </div>
     </header>
 
     <div class="rn-body">
@@ -79,6 +82,16 @@
             <button class="rn-btn rn-mini" id="rn-undo" type="button" title="撤销最近处理的一批笔记">撤销上次</button>
             <button class="rn-btn rn-mini" id="rn-diag" type="button" title="检测接口与环境状态">运行诊断</button>
             <button class="rn-btn rn-mini rn-btn-danger" id="rn-clear" type="button" title="清空本地已处理记录">清空记录</button>
+          </div>
+        </div>
+
+        <div class="rn-settings-section rn-sponsor-section">
+          <div class="rn-settings-hd">☕ 支持与赞赏</div>
+          <div class="rn-sponsor-panel-box">
+            <div class="rn-sponsor-text">如果 RedNote Manager 帮到了你，欢迎请作者喝杯咖啡，支持持续维护更新！</div>
+            <button class="rn-btn rn-mini rn-btn-sponsor-open" id="rn-btn-sponsor-settings" type="button">
+              ☕ 打开微信赞赏码
+            </button>
           </div>
         </div>
 
@@ -160,6 +173,23 @@
           </div>
         </div>
         <div class="rn-log" id="rn-log"></div>
+      </div>
+    </div>
+
+    <!-- 微信赞赏弹窗 -->
+    <div class="rn-modal-overlay" id="rn-sponsor-modal" hidden>
+      <div class="rn-modal-card rn-sponsor-modal-card">
+        <div class="rn-modal-hdr">
+          <span class="rn-modal-title">☕ 请作者喝杯咖啡</span>
+          <button class="rn-modal-close" id="rn-sponsor-close" type="button" title="关闭">&times;</button>
+        </div>
+        <div class="rn-sponsor-card-body">
+          <div class="rn-sponsor-qrcode-wrap">
+            <img class="rn-sponsor-qrcode" src="../../assets/sponsor.jpg" alt="微信赞赏码" />
+          </div>
+          <div class="rn-sponsor-quote">“啥也别说了老铁！”</div>
+          <div class="rn-sponsor-sub">感谢支持 RedNote Manager · 每一份鼓励都是持续维护的动力 ❤️</div>
+        </div>
       </div>
     </div>
   </div>
