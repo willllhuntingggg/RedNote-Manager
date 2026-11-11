@@ -1018,17 +1018,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
 }
 
 .rn-cup-icon {
   display: block;
-  transition: transform 0.15s ease;
+  transition: transform 0.2s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
 }
 
 .rn-sponsor-btn:hover {
-  background: rgba(255, 92, 120, 0.18);
-  border-color: rgba(255, 92, 120, 0.45);
-  color: #ff5c78;
+  background: rgba(30, 58, 138, 0.22);
+  border-color: rgba(96, 165, 250, 0.45);
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.22);
 }
 
 .rn-sponsor-btn:hover .rn-cup-icon {
@@ -1058,9 +1060,9 @@ body {
 }
 
 .rn-btn-sponsor-open {
-  background: rgba(255, 92, 120, 0.12);
-  color: #ff5c78;
-  border: 1px solid rgba(255, 92, 120, 0.35);
+  background: rgba(30, 58, 138, 0.16);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.35);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -1071,9 +1073,10 @@ body {
 }
 
 .rn-btn-sponsor-open:hover {
-  background: rgba(255, 92, 120, 0.22);
-  border-color: #ff5c78;
-  color: #fff;
+  background: rgba(30, 58, 138, 0.32);
+  border-color: #60a5fa;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
 }
 
 /* 日志列表中的赞赏微型按钮 */
@@ -1086,19 +1089,19 @@ body {
   font-size: 10px;
   line-height: 16px;
   border-radius: 99px;
-  background: rgba(255, 92, 120, 0.15);
-  color: #ff5c78;
-  border: 1px solid rgba(255, 92, 120, 0.4);
+  background: rgba(30, 58, 138, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.4);
   font-weight: 500;
   vertical-align: middle;
   transition: all 0.15s;
 }
 
 .rn-line-sponsor-btn:hover {
-  background: #ff5c78;
-  color: #fff;
-  border-color: #ff5c78;
-  box-shadow: 0 0 8px rgba(255, 92, 120, 0.4);
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.45);
 }
 
 /* 微信赞赏弹窗 */

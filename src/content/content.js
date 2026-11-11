@@ -1579,7 +1579,7 @@
     }
     refreshPageCards();
     if (processed >= 3) {
-      log('🎉 叠卡连续清理完成（共 ' + processed + ' 篇）！若帮到了你，请作者喝杯瑞幸/奶茶吧 🥤', 'ok', {
+      log('🎉 叠卡清理完成（共 ' + processed + ' 篇）！若帮到了你，欢迎请作者喝杯咖啡 ☕', 'ok', {
         isSponsor: true,
       });
     }
@@ -1682,7 +1682,7 @@
 
       if (stackState.sessionProcessed > 0) {
         stackState.els.title.textContent = '🎉 连续清理完成！已处理 ' + stackState.sessionProcessed + ' 篇笔记';
-        stackState.els.author.textContent = '若觉得好用，欢迎在侧边栏请作者喝杯瑞幸/奶茶 🥤';
+        stackState.els.author.textContent = '若帮到了你，欢迎请作者喝杯咖啡 ☕';
       } else {
         stackState.els.title.textContent = hintReason
           ? '当前' + hintReason + '下笔记已全部处理完成'
@@ -2366,9 +2366,10 @@
         });
 
         if (state.stats.ok > 0) {
-          log('🎉 批量清理完成！若帮到了你，请作者喝杯瑞幸/奶茶吧 🥤', 'ok', {
+          log('🎉 清理完成（共 ' + state.stats.ok + ' 篇）！若帮到了你，欢迎请作者喝杯咖啡 ☕', 'ok', {
             isSponsor: true,
           });
+          showToast('🎉 清理完成！已处理 ' + state.stats.ok + ' 篇笔记');
         }
       }
     }
