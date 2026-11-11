@@ -74,17 +74,13 @@ globalThis.RNStyle = `
   }
 
   /* 底部已选条数浮动反馈栏 */
-  #rn-feedback-root {
-    all: initial;
+  .rn-bar-wrap {
     position: fixed !important;
     bottom: 24px !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
     z-index: 2147483600 !important;
-    pointer-events: none !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
-  }
-  .rn-bar-wrap {
     pointer-events: auto !important;
     display: flex !important;
     align-items: center !important;
@@ -96,12 +92,14 @@ globalThis.RNStyle = `
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 46, 77, 0.25) !important;
     color: #fff !important;
     backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease !important;
     box-sizing: border-box !important;
   }
   .rn-bar-wrap.rn-hidden {
+    display: none !important;
     opacity: 0 !important;
-    transform: translateY(28px) scale(0.92) !important;
+    transform: translateX(-50%) translateY(28px) scale(0.92) !important;
     pointer-events: none !important;
   }
   .rn-bar-badge {
@@ -235,8 +233,7 @@ globalThis.RNStyle = `
     inset: 0 !important;
     z-index: 2147483640 !important;
     background: rgba(10, 10, 14, 0.78) !important;
-    backdrop-filter: blur(14px) !important;
-    display: flex !important;
+    display: none !important;
     align-items: center !important;
     justify-content: center !important;
     opacity: 0 !important;
@@ -246,8 +243,11 @@ globalThis.RNStyle = `
     user-select: none !important;
   }
   .rn-stack-overlay.rn-open {
+    display: flex !important;
     opacity: 1 !important;
     pointer-events: auto !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
   }
 
   .rn-stack-box {

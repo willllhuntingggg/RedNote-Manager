@@ -12,6 +12,8 @@ const RNAI = globalThis.RNAI;
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => Array.prototype.slice.call(document.querySelectorAll(sel));
 
+const CUP_SVG_INLINE = '<svg class="rn-cup-icon rn-cup-inline" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 6.5C7 5.67 7.67 5 8.5 5H15.5C16.33 5 17 5.67 17 6.5V7H7V6.5Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="0.8"/><rect x="5.5" y="7" width="13" height="2.2" rx="1.1" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.6"/><path d="M6.6 9.2L7.8 19.3C7.9 20.3 8.7 21 9.7 21H14.3C15.3 21 16.1 20.3 16.2 19.3L17.4 9.2H6.6Z" fill="#1E3A8A"/><path d="M7.1 13.2C8.6 14.3 10.3 14.6 12 14C13.7 13.4 15.4 13.6 16.9 14.3L16.2 19.3C16.1 20.3 15.3 21 14.3 21H9.7C8.7 21 7.9 20.3 7.8 19.3L7.1 13.2Z" fill="#FFFFFF"/><circle cx="12" cy="11.4" r="1.1" fill="#FFFFFF"/></svg>';
+
 let activeTabId = null;
 let pollTimer = null;
 let lastState = null;
@@ -509,7 +511,7 @@ function renderLogs(logs) {
         undoHtml = '<button class="rn-line-undo-btn" data-undo-type="' + esc(l.undoType || 'single') + '" data-note-id="' + esc(l.noteId || '') + '" data-batch-id="' + esc(l.batchId || '') + '" data-mode="' + esc(l.mode || '') + '" type="button" title="' + esc(btnTitle) + '">' + esc(btnText) + '</button>';
       }
     } else if (l.isSponsor) {
-      undoHtml = '<button class="rn-line-sponsor-btn" type="button" title="请作者喝杯咖啡 ☕">☕ 请喝咖啡</button>';
+      undoHtml = '<button class="rn-line-sponsor-btn" type="button" title="请作者喝杯咖啡">' + CUP_SVG_INLINE + '<span>请喝咖啡</span></button>';
     }
     return '<div class="rn-line' + cls + '">' +
       '<span class="rn-t">' + esc(l.t) + '</span> ' +

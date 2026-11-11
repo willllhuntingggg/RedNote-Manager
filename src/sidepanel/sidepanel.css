@@ -548,6 +548,9 @@ body {
   font-weight: 650;
   color: #d1d1e0;
   letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .rn-settings-actions {
@@ -1027,6 +1030,13 @@ body {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
 }
 
+.rn-cup-inline {
+  display: inline-block;
+  vertical-align: -2.5px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
 .rn-sponsor-btn:hover {
   background: rgba(30, 58, 138, 0.22);
   border-color: rgba(96, 165, 250, 0.45);
@@ -1083,7 +1093,9 @@ body {
 .rn-line-sponsor-btn {
   all: unset;
   cursor: pointer;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-left: 6px;
   padding: 1px 8px;
   font-size: 10px;
