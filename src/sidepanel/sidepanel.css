@@ -341,6 +341,7 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+  width: 100%;
 }
 
 .rn-search-box {
@@ -348,12 +349,8 @@ body {
   display: flex;
   align-items: center;
   flex: 1;
-}
-
-.rn-search-input {
+  min-width: 0;
   width: 100%;
-  padding-right: 26px;
-  box-sizing: border-box;
 }
 
 .rn-search-clear {
@@ -363,19 +360,20 @@ body {
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-  line-height: 14px;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
   text-align: center;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
   user-select: none;
+  z-index: 2;
 }
 
 .rn-search-clear:hover {
@@ -396,6 +394,7 @@ body {
   color: var(--text-main);
   font-size: 12px;
   min-width: 0;
+  box-sizing: border-box;
   transition: border-color 0.15s ease;
 }
 
@@ -403,13 +402,25 @@ body {
   border-color: var(--border-focus);
 }
 
-.rn-input.rn-grow {
+.rn-input.rn-grow,
+.rn-grow {
   flex: 1;
+  min-width: 0;
 }
 
 .rn-input.rn-num {
   width: 58px;
   text-align: center;
+}
+
+/* 确保搜索框输入控件填满容器，并预留右侧清空叉号空间 */
+.rn-search-box .rn-search-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  display: block;
+  box-sizing: border-box;
+  padding: 6px 28px 6px 9px;
 }
 
 .rn-hit {
