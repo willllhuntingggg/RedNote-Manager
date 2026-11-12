@@ -128,16 +128,16 @@
         </div>
       </div>
 
-      <!-- 模式状态展示（跟随左侧小红书页面）：收藏 / 点赞 -->
-      <div class="rn-tabs" id="rn-mode-tabs" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
-        <button class="rn-tab rn-on" type="button" data-mode="uncollect" id="rn-tab-uncollect" title="侧边栏跟随网页：在左侧小红书点击「收藏」切换">
-          <span class="rn-tab-text">收藏</span>
-          <span class="rn-badge-cnt" id="rn-badge-uncollect">0</span>
-        </button>
-        <button class="rn-tab" type="button" data-mode="unlike" id="rn-tab-unlike" title="侧边栏跟随网页：在左侧小红书点击「赞过」切换">
-          <span class="rn-tab-text">点赞</span>
-          <span class="rn-badge-cnt" id="rn-badge-unlike">0</span>
-        </button>
+      <!-- 模式状态指示条（跟随左侧小红书页面） -->
+      <div class="rn-mode-banner" id="rn-mode-banner" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
+        <div class="rn-mode-info">
+          <span class="rn-mode-icon" id="rn-mode-icon">⭐</span>
+          <div class="rn-mode-text-wrap">
+            <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
+            <span class="rn-mode-sub" id="rn-mode-sub">已载入 0 篇笔记 · 跟随网页</span>
+          </div>
+        </div>
+        <span class="rn-mode-badge" id="rn-mode-badge">0</span>
       </div>
 
       <!-- 提示 / 警告 -->

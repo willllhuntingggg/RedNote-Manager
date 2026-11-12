@@ -147,7 +147,65 @@ body {
   overscroll-behavior: contain;
 }
 
-/* 模式 Tabs */
+/* 模式指示条 (跟随小红书页面) */
+.rn-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(255, 46, 77, 0.08);
+  border: 1px solid rgba(255, 46, 77, 0.25);
+  border-radius: 9px;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+.rn-mode-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rn-mode-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.rn-mode-text-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rn-mode-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rn-mode-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.rn-mode-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(255, 46, 77, 0.22);
+  color: #ff859b;
+  border: 1px solid rgba(255, 46, 77, 0.4);
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* 兼容模式 Tabs */
 .rn-tabs {
   display: flex;
   gap: 6px;

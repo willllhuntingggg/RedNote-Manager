@@ -2243,6 +2243,84 @@ test('Option A 交互架构：小红书页面单向驱动，侧边栏状态跟�
   assert.ok(modeCache.uncollect.some(n => n.id === 'note_shared_001'), '共存笔记同样存在于收藏列表！');
 });
 
+test('模式指示条状态化与静默熔断机制：废除超时开闸吞噬、旧卡片全在时坚决拒收、杜绝切回收藏时暴增混入点赞笔记', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const sidepanelHtml = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.html'), 'utf8');
+  const sidepanelJs = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.js'), 'utf8');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. UI 架构检测：已移除双可点击 Tab，全面升级为模式状态条
+  assert.ok(sidepanelHtml.includes('class="rn-mode-banner"'), 'HTML 必须包含 rn-mode-banner 模式指示条');
+  assert.ok(sidepanelHtml.includes('id="rn-mode-title"'), '指示条必须包含标题容器');
+  assert.ok(sidepanelHtml.includes('id="rn-mode-badge"'), '指示条必须包含计数角标');
+  assert.ok(sidepanelJs.includes("const modeBanner = $('rn-mode-banner')"), 'JS 必须动态驱动模式指示条渲染');
+
+  // 2. 底层数据防护检测：坚决废除旧代码中 1500ms 超时强制开闸并误吞旧卡片的漏洞
+  assert.ok(!contentCode.includes('Date.now() - tabTransitionStartTime > 1500'), '坚决杜绝在 allStale 时因 1500ms 超时而清空黑名单吞噬旧卡片');
+  assert.ok(!contentCode.includes('// 超时结束时：如果这条链仍然是最新的，安全释放锁防止死锁'), 'waitForCards 坚决不再因超时而向旧 DOM 卡片开闸');
+
+  // 3. 真实场景严密仿真：
+  // 收藏 20 篇 -> 点赞滚动加载 30 篇 -> 点击收藏（小红书网络慢延迟 3 秒换批）
+  const collectCards = Array.from({ length: 20 }, (_, i) => ({ id: 'col_' + i, title: '收藏 ' + i }));
+  const likeCards = Array.from({ length: 30 }, (_, i) => ({ id: 'like_' + i, title: '点赞 ' + i }));
+
+  const modeCache = {
+    uncollect: collectCards.slice(), // 收藏已有 20 篇
+    unlike: likeCards.slice(),       // 点赞已有 30 篇
+  };
+
+  let tabTransitionLock = true;
+  let tabTransitionTarget = 'collect';
+  // 切到收藏时，屏幕上依然是点赞的 30 篇卡片
+  let tabTransitionStaleIds = new Set(likeCards.map(c => c.id));
+
+  function simulateSafeSync(actualTab, domCards) {
+    if (tabTransitionLock) {
+      if (actualTab !== tabTransitionTarget) return false;
+      const allStale = domCards.every(c => tabTransitionStaleIds.has(c.id));
+      if (allStale) {
+        // 100% 全是旧卡片，坚决拒绝入库！
+        return false;
+      }
+      const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+      if (!anyStale) {
+        tabTransitionLock = false;
+        tabTransitionStaleIds.clear();
+      }
+    }
+
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    const targetList = modeCache[targetMode];
+    let added = 0;
+    for (const c of domCards) {
+      if (tabTransitionStaleIds.has(c.id)) continue;
+      if (!targetList.some(x => x.id === c.id)) {
+        targetList.push(c);
+        added++;
+      }
+    }
+    return added > 0;
+  }
+
+  // 阶段 1：用户点击「收藏」后 1 秒，小红书网络请求尚未返回，屏幕上 100% 依然是那 30 篇点赞卡片
+  let resultAt1s = simulateSafeSync('collect', likeCards);
+  assert.strictEqual(resultAt1s, false, '网络未返回期间，30 篇旧点赞卡片坚决拒绝入库');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏依然保持 20 篇，绝对不被 30 篇点赞污染！');
+
+  // 阶段 2：即使耗时 3 秒，只要 DOM 依然是旧点赞卡片，坚决守住防线，绝不发生超时吞噬
+  let resultAt3s = simulateSafeSync('collect', likeCards);
+  assert.strictEqual(resultAt3s, false, '耗时 3 秒依然坚守静默熔断');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏始终保持纯净的 20 篇');
+
+  // 阶段 3：小红书请求返回，DOM 终于换批为真实的收藏卡片（旧卡片彻底卸载）
+  let resultLoaded = simulateSafeSync('collect', collectCards);
+  assert.strictEqual(tabTransitionLock, false, '新卡片就绪且旧卡片彻底销毁，过渡锁安全释放');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏最终依然为 20 篇，绝不膨胀到 50 篇！');
+  assert.strictEqual(modeCache.unlike.length, 30, '点赞保持 30 篇不变');
+});
+
+
 
 
 

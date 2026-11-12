@@ -252,11 +252,40 @@ function applyState(st) {
   // 顶部提示
   applyAlert(st);
 
-  // 模式 Tab
+  // 模式状态指示条（跟随左侧小红书页面）
   const counts = st.cacheCounts || {};
   const uncollectNum = counts.uncollect !== undefined ? counts.uncollect : 0;
   const unlikeNum = counts.unlike !== undefined ? counts.unlike : 0;
 
+  const modeBanner = $('rn-mode-banner');
+  if (modeBanner) {
+    const isUnlike = st.mode === 'unlike';
+    const isOwn = !!st.isOwnNotes;
+    const bannerTitle = $('rn-mode-title');
+    const bannerSub = $('rn-mode-sub');
+    const bannerBadge = $('rn-mode-badge');
+    const bannerIcon = $('rn-mode-icon');
+    const curCount = isUnlike ? unlikeNum : uncollectNum;
+
+    if (isOwn) {
+      if (bannerTitle) bannerTitle.textContent = '当前模式：我的笔记（受安全保护）';
+      if (bannerSub) bannerSub.textContent = '请在左侧小红书切换至「收藏」或「赞过」';
+      if (bannerBadge) bannerBadge.textContent = '0';
+      if (bannerIcon) bannerIcon.textContent = '📝';
+    } else if (isUnlike) {
+      if (bannerTitle) bannerTitle.textContent = '当前模式：取消点赞';
+      if (bannerSub) bannerSub.textContent = `已载入 ${curCount} 篇点赞笔记 · 跟随网页`;
+      if (bannerBadge) bannerBadge.textContent = String(curCount);
+      if (bannerIcon) bannerIcon.textContent = '❤️';
+    } else {
+      if (bannerTitle) bannerTitle.textContent = '当前模式：取消收藏';
+      if (bannerSub) bannerSub.textContent = `已载入 ${curCount} 篇收藏笔记 · 跟随网页`;
+      if (bannerBadge) bannerBadge.textContent = String(curCount);
+      if (bannerIcon) bannerIcon.textContent = '⭐';
+    }
+  }
+
+  // 兼容模式 Tab 存在时的状态同步
   $$('.rn-tab').forEach(function (btn) {
     const isCur = btn.dataset.mode === st.mode;
     btn.classList.toggle('rn-on', isCur);
@@ -658,18 +687,25 @@ function closeSponsorModal() {
 /* ============================ 事件绑定 ============================ */
 
 function bindEvents() {
-  // 模式 Tab：跟随左侧小红书页面，点击非激活 Tab 时提示用户在页面端切换
+  // 模式状态卡片：点击平滑滚动至列表顶部
+  const modeBanner = $('rn-mode-banner');
+  if (modeBanner) {
+    modeBanner.addEventListener('click', function () {
+      const list = $('rn-list');
+      if (list) list.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+
+  // 兼容模式 Tab 存在时的事件处理
   $$('.rn-tab').forEach(function (btn) {
     btn.addEventListener('click', function () {
       const mode = btn.dataset.mode;
       if (!mode) return;
       if (lastState && lastState.mode === mode) {
-        // 已处于当前模式，平滑滚动至候选列表顶部
         const list = $('rn-list');
         if (list) list.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
-      // 提示用户在左侧小红书页面切换
       showTabFollowHint(mode);
     });
   });

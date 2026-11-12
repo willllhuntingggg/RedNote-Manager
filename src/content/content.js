@@ -672,28 +672,23 @@
         return false; // DOM 处于清空/加载中状态，暂不入库
       }
 
-      // 只要 DOM 中的卡片全部是切换前拍摄的旧卡片，说明小红书新卡片尚未渲染，暂不入库
+      // 只要 DOM 中的卡片全部是切换前拍摄的旧卡片，说明小红书新卡片尚未渲染，坚决拒绝入库！
       const allStale = allCards.every(function (c) {
         return tabTransitionStaleIds.has(c.id);
       });
       if (allStale) {
-        // 在等待新卡片换批渲染期间，如果超时（超过1500ms），兜底解除锁
-        if (Date.now() - tabTransitionStartTime > 1500) {
-          tabTransitionLock = false;
-          tabTransitionStaleIds.clear();
-        } else {
-          return false;
-        }
-      } else {
-        // 新批次卡片已出现！
-        const anyStale = allCards.some(function (c) {
-          return tabTransitionStaleIds.has(c.id);
-        });
-        // 只要旧卡片全部卸载，或者过渡已超过800ms，安全解除过渡锁与清空黑名单
-        if (!anyStale || (Date.now() - tabTransitionStartTime > 800)) {
-          tabTransitionLock = false;
-          tabTransitionStaleIds.clear();
-        }
+        // 只要 DOM 中的卡片全部仍是切换前拍摄的旧卡片，坚决拒绝入库，耐心等待小红书新数据渲染！
+        return false;
+      }
+
+      // 新批次卡片已出现（!allStale）！
+      const anyStale = allCards.some(function (c) {
+        return tabTransitionStaleIds.has(c.id);
+      });
+      // 只有当 DOM 中的旧卡片全部彻底卸载后，才安全解除过渡锁与清空黑名单
+      if (!anyStale) {
+        tabTransitionLock = false;
+        tabTransitionStaleIds.clear();
       }
     }
 
@@ -998,12 +993,8 @@
       }
       await sleep(150);
     }
-    // 超时结束时：如果这条链仍然是最新的，安全释放锁防止死锁
-    if (tabSwitchGeneration === gen) {
-      tabTransitionLock = false;
-      tabTransitionStaleIds.clear();
-    }
-    return tabSwitchGeneration === gen;
+    // 超时结束时：若新卡片始终未出现，坚决不释放锁与不清空黑名单，防止旧DOM卡片被当作新数据反向吞噬！
+    return false;
   }
 
   async function ensureTab(want) {
@@ -1746,8 +1737,8 @@
 
           // 等待新 Tab 的卡片 DOM 渲染就绪并安全合入对应缓存
           var clickGen = tabSwitchGeneration;
-          waitForCards(2500, detected).then(function () {
-            if (tabSwitchGeneration !== clickGen) return; // 已过时，放弃
+          waitForCards(3000, detected).then(function (success) {
+            if (tabSwitchGeneration !== clickGen || !success) return; // 已过时或新卡片未到，放弃
             if (syncDomCardsToCandidates()) broadcastState();
             refreshPageCards();
           });
@@ -3548,8 +3539,8 @@
 
       if (!isOwnNotesPage() && detected) {
         const urlGen = tabSwitchGeneration;
-        waitForCards(2500, detected).then(function () {
-          if (tabSwitchGeneration !== urlGen) return;
+        waitForCards(3000, detected).then(function (success) {
+          if (tabSwitchGeneration !== urlGen || !success) return;
           if (syncDomCardsToCandidates()) broadcastState();
           refreshPageCards();
         });
