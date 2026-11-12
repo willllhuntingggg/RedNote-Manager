@@ -37,6 +37,9 @@ function ensurePortConnection(tabId) {
       sidepanelPort = chrome.tabs.connect(tabId, { name: 'rn-sidepanel' });
       sidepanelPort.__tabId = tabId;
       sidepanelPort.onDisconnect.addListener(function () {
+        if (chrome.runtime && chrome.runtime.lastError) {
+          // 消费掉非活跃页面的断开错误，防止控制台打印噪声
+        }
         sidepanelPort = null;
       });
     }
@@ -46,6 +49,8 @@ function ensurePortConnection(tabId) {
 }
 
 /* ============================ 与当前标签页通信 ============================ */
+
+let isInjecting = false;
 
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -62,7 +67,36 @@ async function sendToTab(type, data) {
   try {
     return await chrome.tabs.sendMessage(activeTabId, Object.assign({ type: type }, data || {}));
   } catch (e) {
-    console.warn('[RedNote Sidepanel] 发送消息异常:', e);
+    const msg = (e && e.message) || String(e);
+    const isConnErr = msg.includes('Receiving end does not exist') || msg.includes('Could not establish connection');
+
+    // 智能自愈：若因扩展刚重载/更新导致页面内容脚本未挂载，尝试动态无感补注并重试
+    if (isConnErr && chrome.scripting && tab.url && /xiaohongshu\.com|rednote\.com/.test(tab.url) && !isInjecting) {
+      isInjecting = true;
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTabId },
+          files: ['src/core.js', 'src/content/style.js', 'src/content/content.js'],
+        });
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTabId },
+          files: ['src/page/bridge.js'],
+          world: 'MAIN',
+        });
+        await new Promise(function (resolve) { setTimeout(resolve, 200); });
+        ensurePortConnection(activeTabId);
+        const retryRes = await chrome.tabs.sendMessage(activeTabId, Object.assign({ type: type }, data || {}));
+        return retryRes;
+      } catch (injectErr) {
+        // 动态注入受阻时静默，降级至在侧边栏提供一键刷新指引
+      } finally {
+        isInjecting = false;
+      }
+    }
+
+    if (!isConnErr) {
+      console.warn('[RedNote Sidepanel] 发送消息异常:', e);
+    }
     return null;
   }
 }
@@ -85,7 +119,18 @@ async function requestState() {
 
   const res = await sendToTab('RN_GET_STATE');
   if (!res || !res.ok || !res.state) {
-    renderDisconnected('尚未检测到小红书页面就绪。<br>请打开小红书「我的主页 → 收藏 / 赞过」，或刷新页面。');
+    renderDisconnected(
+      '尚未检测到小红书页面就绪（插件刚更新或页面未连接）。<br>' +
+      '<button id="rn-btn-reload-active-tab" class="rn-btn rn-mini" style="margin-top:8px;padding:4px 12px;font-size:12px;cursor:pointer;">🔄 刷新小红书页面重连</button>'
+    );
+    const reloadBtn = $('rn-btn-reload-active-tab');
+    if (reloadBtn) {
+      reloadBtn.onclick = function () {
+        if (activeTabId && chrome.tabs && chrome.tabs.reload) {
+          chrome.tabs.reload(activeTabId);
+        }
+      };
+    }
     return;
   }
 

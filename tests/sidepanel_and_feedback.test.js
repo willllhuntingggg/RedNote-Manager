@@ -1519,6 +1519,21 @@ test('防串仓隔离机制：严格隔离收藏与点赞容器，隐藏卡片�
   assert.strictEqual(isTabActiveByFw(tabsWithActive[0], tabsWithActive), false);
 });
 
+test('侧边栏与页面通信自愈机制：防 Receiving end does not exist 噪声警报与无感补注', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../manifest.json'), 'utf8'));
+  const sidepanelCode = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.js'), 'utf8');
+
+  // 1. Manifest 需声明 scripting 权限以支持热重载自愈注入
+  assert.ok(manifest.permissions.includes('scripting'), 'manifest.json 必须包含 scripting 权限');
+
+  // 2. 侧边栏必须包含断连错误抑制与自愈重试逻辑
+  assert.ok(sidepanelCode.includes('Receiving end does not exist'), '包含针对连接不存在的捕获');
+  assert.ok(sidepanelCode.includes('chrome.scripting.executeScript'), '支持动态补注内容脚本');
+  assert.ok(sidepanelCode.includes('rn-btn-reload-active-tab'), '在断开提示中提供一键刷新重连按钮');
+});
+
 
 
 

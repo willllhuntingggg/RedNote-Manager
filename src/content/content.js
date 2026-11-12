@@ -2778,6 +2778,10 @@
 
   function mount() {
     if (state.mounted) return;
+    const existingHost = document.getElementById('rn-manager-host');
+    if (existingHost) {
+      try { existingHost.remove(); } catch (e) {}
+    }
     const host = document.createElement('div');
     host.id = 'rn-manager-host';
     host.style.cssText = 'position: fixed; inset: 0; width: 0; height: 0; z-index: 2147483600; pointer-events: none;';
