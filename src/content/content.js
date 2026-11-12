@@ -378,24 +378,71 @@
   const LINK_SELECTORS = ['a[href*="/explore/"]', 'a.cover[href]', 'a[href*="/discovery/item/"]'];
   const TITLE_SELECTORS = ['.title span', '.footer .title span', '.title', '.footer .title'];
 
-  function cardNodes() {
+  function isCardVisible(el) {
+    if (!el) return false;
+    // 1. 检查是否存在隐藏的祖先元素或非激活的 Tab 容器
+    if (el.closest) {
+      if (el.closest('[hidden], [aria-hidden="true"], [style*="display: none"], [style*="display:none"], [style*="visibility: hidden"]')) {
+        return false;
+      }
+      if (el.closest('.tab-content-item:not(.active), .tab-pane:not(.active), .feeds-tab-pane:not(.active)')) {
+        return false;
+      }
+    }
+    // 2. 检查浏览器计算样式与 offsetParent (排除 display:none 的卡片)
+    if (typeof window !== 'undefined' && window.getComputedStyle) {
+      try {
+        if (el.offsetParent === null) {
+          const st = window.getComputedStyle(el);
+          if (st && (st.display === 'none' || st.visibility === 'hidden')) return false;
+        }
+      } catch (e) {}
+    }
+    return true;
+  }
+
+  function cardNodes(forTab) {
+    const tab = forTab || getPageActualTabType();
+    let scope = document;
+    if (tab === 'collect') {
+      const collectContainer = $('#userCollectFeeds') || $('.user-collect .feeds-container') || $('.collect-feeds');
+      if (collectContainer) scope = collectContainer;
+    } else if (tab === 'like') {
+      const likeContainer = $('#userLikeFeeds') || $('.user-like .feeds-container') || $('.like-feeds');
+      if (likeContainer) scope = likeContainer;
+    }
+
     const out = [];
+    const filterAndAdd = function (node) {
+      if (!node) return;
+      // 严格排除异仓/反向容器里的卡片，彻底避免跨 Tab 串仓污染
+      if (tab === 'collect' && node.closest && node.closest('#userLikeFeeds, #userPostedFeeds, .user-like, .user-posted')) {
+        return;
+      }
+      if (tab === 'like' && node.closest && node.closest('#userCollectFeeds, #userPostedFeeds, .user-collect, .user-posted')) {
+        return;
+      }
+      // 严格排除处于隐藏 Tab 容器中的卡片
+      if (!isCardVisible(node)) {
+        return;
+      }
+      if (out.indexOf(node) === -1) out.push(node);
+    };
+
     for (let i = 0; i < CARD_SELECTORS.length; i++) {
-      const list = $$(CARD_SELECTORS[i]);
+      const list = $$(CARD_SELECTORS[i], scope);
       for (let j = 0; j < list.length; j++) {
-        if (out.indexOf(list[j]) === -1) out.push(list[j]);
+        filterAndAdd(list[j]);
       }
     }
     if (out.length > 0) return out;
 
     // 强力兜底：通过 /explore/ 链接反向向上寻找卡片容器
-    const links = $$('a[href*="/explore/"]');
+    const links = $$('a[href*="/explore/"]', scope);
     for (let i = 0; i < links.length; i++) {
       const a = links[i];
-      const card = a.closest('section, article, [class*="note"], [class*="item"], [class*="card"]') || a.parentElement;
-      if (card && out.indexOf(card) === -1) {
-        out.push(card);
-      }
+      const card = (a.closest && a.closest('section, article, [class*="note"], [class*="item"], [class*="card"]')) || a.parentElement;
+      if (card) filterAndAdd(card);
     }
     return out;
   }
@@ -502,11 +549,11 @@
    * 扫描当前页面可见的笔记卡片。
    * 核心安全保护：若明确处于发布笔记页（自己的原创笔记），绝对不读！
    */
-  function scanCards() {
+  function scanCards(forTab) {
     if (isOwnNotesPage()) return [];
 
     const out = [];
-    cardNodes().forEach(function (el) {
+    cardNodes(forTab).forEach(function (el) {
       const n = noteFromCard(el);
       if (n && !isOwnNote(n)) out.push(n);
     });
@@ -545,7 +592,7 @@
     if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
     const targetList = state.modeCache[targetMode];
 
-    const cards = scanCards();
+    const cards = scanCards(actualTab);
     if (!cards.length) return false;
 
     // 过滤掉前一个 Tab 残留在 DOM 里的旧卡片
@@ -632,8 +679,17 @@
       if (childActive) return true;
     }
     try {
-      const fw = window.getComputedStyle(el).fontWeight;
-      if (parseInt(fw, 10) >= 600 || fw === 'bold') return true;
+      const rawFw = window.getComputedStyle(el).fontWeight;
+      const fw = parseInt(rawFw, 10) || (rawFw === 'bold' ? 700 : 400);
+      if (fw >= 600 && el.parentElement) {
+        const siblings = Array.from(el.parentElement.children).filter(function (s) { return s !== el; });
+        const allSiblingsLighter = siblings.length > 0 && siblings.every(function (s) {
+          const sRaw = window.getComputedStyle(s).fontWeight;
+          const sfw = parseInt(sRaw, 10) || (sRaw === 'bold' ? 700 : 400);
+          return sfw < fw;
+        });
+        if (allSiblingsLighter) return true;
+      }
     } catch (e) {}
     return false;
   }
@@ -746,10 +802,10 @@
   }
 
   /** 切完标签后卡片是异步渲染的，必须等到新 Tab 的非旧卡片出现再算就绪 */
-  async function waitForCards(timeoutMs) {
+  async function waitForCards(timeoutMs, forTab) {
     const end = nowMs() + (timeoutMs || 6000);
     while (nowMs() < end) {
-      const cards = scanCards();
+      const cards = scanCards(forTab);
       const hasFresh = cards.some(function (c) {
         return !staleCardsFromPreviousTab || !staleCardsFromPreviousTab.has(c.id);
       });
@@ -837,7 +893,7 @@
     if (curTab && curTab !== expectedTab) {
       log('当前在「' + (curTab === 'like' ? '点赞' : (curTab === 'collect' ? '收藏' : '我的笔记')) + '」，正在切换至「' + M.tabLabel + '」…', 'info');
       await ensureTab(M.tabLabel);
-      await waitForCards(6000);
+      await waitForCards(6000, expectedTab);
       curTab = getPageActualTabType();
     }
     if (curTab && curTab !== expectedTab) {
@@ -866,7 +922,7 @@
         return 0;
       }
       let added = 0;
-      scanCards().forEach(function (n) {
+      scanCards(expectedTab).forEach(function (n) {
         if (!acc.has(n.id)) {
           acc.set(n.id, n);
           added++;
@@ -1896,13 +1952,13 @@
     if (stackState.randomMode) {
       stackState.els.btnPrev.disabled = (!stackState.history || stackState.history.length === 0) && idx <= 0;
       stackState.els.btnNext.disabled = total <= 1;
-      stackState.els.btnNext.innerHTML = '随机下一个 <span>🎲</span> <kbd class="rn-stack-nav-kbd">→</kbd>';
-      stackState.els.btnNext.title = '随机下一张 (→)';
+      stackState.els.btnNext.innerHTML = '随机下一个 <span>🎲</span>';
+      stackState.els.btnNext.title = '随机下一张 (快捷键: →)';
     } else {
       stackState.els.btnPrev.disabled = idx <= 0;
       stackState.els.btnNext.disabled = idx >= total - 1;
-      stackState.els.btnNext.innerHTML = '下一个 <span>➡</span> <kbd class="rn-stack-nav-kbd">→</kbd>';
-      stackState.els.btnNext.title = '下一张 (→)';
+      stackState.els.btnNext.innerHTML = '下一个 <span>➡</span>';
+      stackState.els.btnNext.title = '下一张 (快捷键: →)';
     }
 
     // 更新单动作专属操作按钮（取消点赞 / 取消收藏），明确在按钮上直观展示快捷键 Space
@@ -2324,7 +2380,7 @@
       let scannedNow = false;
       if (!state.candidates.length) {
         log('正在读取「' + M.tabLabel + '」列表…');
-        await waitForCards(6000);
+        await waitForCards(6000, s.mode === 'unlike' ? 'like' : 'collect');
         state.candidates = await collectCandidates();
         if (!state.candidates.length) {
           log('没读到笔记卡片：如果当前停在「专辑」子页，请切到「笔记」子页再试', 'err');
@@ -2502,7 +2558,7 @@
       await assertOwnProfile();
       await ensureTab(M.tabLabel);
       log('开始读取「' + M.tabLabel + '」列表…');
-      await waitForCards(6000);
+      await waitForCards(6000, state.settings.mode === 'unlike' ? 'like' : 'collect');
       state.candidates = await collectCandidates();
       broadcastState();
       if (!state.candidates.length) {
@@ -2779,8 +2835,8 @@
       '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
       '    </div>',
       '    <div class="rn-stack-header-actions">',
-      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: Z)" disabled>↩️ 撤销刚才 <kbd class="rn-stack-nav-kbd">Z</kbd></button>',
-      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">× <kbd class="rn-stack-nav-kbd">Esc</kbd></button>',
+      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: Z)" disabled>↩️ 撤销刚才</button>',
+      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
       '    </div>',
       '  </div>',
       '  <div class="rn-stack-auto-row">',
@@ -2819,15 +2875,21 @@
       '    </div>',
       '  </div>',
       '  <div class="rn-stack-actions">',
-      '    <button class="rn-action-nav-btn" id="rn-stack-prev" type="button" title="上一张 (←)">',
-      '      <span>⬅</span> 上一个 <kbd class="rn-stack-nav-kbd">←</kbd>',
+      '    <button class="rn-action-nav-btn" id="rn-stack-prev" type="button" title="上一张 (快捷键: ←)">',
+      '      <span>⬅</span> 上一个',
       '    </button>',
       '    <div class="rn-action-exec-btns">',
       '      <button class="rn-stack-action-btn" id="rn-stack-action" type="button" aria-label="执行操作" title="取消操作 (快捷键: 空格 / 回车 / ↓)"></button>',
       '    </div>',
-      '    <button class="rn-action-nav-btn" id="rn-stack-next" type="button" title="下一张 (→)">',
-      '      下一个 <span>➡</span> <kbd class="rn-stack-nav-kbd">→</kbd>',
+      '    <button class="rn-action-nav-btn" id="rn-stack-next" type="button" title="下一张 (快捷键: →)">',
+      '      下一个 <span>➡</span>',
       '    </button>',
+      '  </div>',
+      '  <div class="rn-stack-tips">',
+      '    <span><kbd>Space</kbd> 取消操作</span>',
+      '    <span><kbd>←</kbd> <kbd>→</kbd> 翻页</span>',
+      '    <span><kbd>Z</kbd> 撤销</span>',
+      '    <span><kbd>Esc</kbd> 关闭</span>',
       '  </div>',
       '</div>',
     ].join('');

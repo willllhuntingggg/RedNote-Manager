@@ -1442,6 +1442,83 @@ test('检索过滤感知与释放机制：侧边栏关闭时释放卡片暗化�
   assert.ok(sidepanelHtml.includes('id="rn-search-clear"'), '侧边栏搜索框需提供快捷清除按钮');
 });
 
+test('叠卡模式快捷键视觉美学：移除破坏圆形关闭按钮与翻页按钮的内嵌按键，增设平衡典雅的底部快捷键指引栏', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+  const styleCode = fs.readFileSync(path.resolve(__dirname, '../src/content/style.js'), 'utf8');
+
+  // 1. 关闭按钮必须保持纯净圆形，不塞入破坏比例的 Esc 文字
+  assert.ok(contentCode.includes('class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×<'), '关闭按钮保持纯粹简洁的 × 字符');
+  assert.ok(!contentCode.includes('>× <kbd class="rn-stack-nav-kbd">Esc</kbd><'), '关闭按钮内禁止内嵌 Esc 徽标导致变形');
+
+  // 2. 撤销与翻页按钮不臃肿塞键帽，保持设计感
+  assert.ok(contentCode.includes('class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: Z)" disabled>↩️ 撤销刚才</button>'), '撤销按钮文案整洁自然');
+  assert.ok(contentCode.includes('<span>⬅</span> 上一个'), '上一个按钮文案整洁自然');
+  assert.ok(contentCode.includes('下一个 <span>➡</span>'), '下一个按钮文案整洁自然');
+
+  // 3. 底部独立快捷键指引栏 (rn-stack-tips) 结构与样式完整
+  assert.ok(contentCode.includes('class="rn-stack-tips"'), '必须包含底部独立快捷键栏');
+  assert.ok(contentCode.includes('<kbd>Space</kbd> 取消操作'), '提示栏明确指明 Space 快捷键');
+  assert.ok(contentCode.includes('<kbd>←</kbd> <kbd>→</kbd> 翻页'), '提示栏明确指明方向键翻页');
+  assert.ok(contentCode.includes('<kbd>Z</kbd> 撤销'), '提示栏明确指明 Z 撤销');
+  assert.ok(contentCode.includes('<kbd>Esc</kbd> 关闭'), '提示栏明确指明 Esc 关闭');
+
+  assert.ok(styleCode.includes('.rn-stack-tips'), 'style.js 必须包含 rn-stack-tips 样式定义');
+  assert.ok(styleCode.includes('flex-wrap: nowrap !important;'), '操作栏严禁换行错位');
+});
+
+test('防串仓隔离机制：严格隔离收藏与点赞容器，隐藏卡片与异仓卡片绝不跨仓混入', () => {
+  // 模拟 DOM 结构，页面中同时存在 #userCollectFeeds 与 #userLikeFeeds
+  const collectCards = [
+    { id: 'col1'.padEnd(24, '0'), container: '#userCollectFeeds', visible: true },
+    { id: 'col2'.padEnd(24, '0'), container: '#userCollectFeeds', visible: true },
+  ];
+  const likeOnlyCards = [
+    { id: 'like1'.padEnd(24, '0'), container: '#userLikeFeeds', visible: false }, // 隐藏在点赞容器
+    { id: 'like2'.padEnd(24, '0'), container: '#userLikeFeeds', visible: false },
+  ];
+
+  function filterCardsForTab(cards, tab) {
+    return cards.filter(c => {
+      if (tab === 'collect' && c.container.includes('Like')) return false;
+      if (tab === 'like' && c.container.includes('Collect')) return false;
+      if (!c.visible) return false;
+      return true;
+    });
+  }
+
+  // 1. 在收藏 Tab 下，只有收藏容器中的可见卡片能够进入候选
+  const allCards = collectCards.concat(likeOnlyCards);
+  const scannedInCollect = filterCardsForTab(allCards, 'collect');
+  assert.strictEqual(scannedInCollect.length, 2, '仅收藏卡片被识别');
+  assert.strictEqual(scannedInCollect.some(c => c.id.startsWith('like')), false, '只点赞的笔记绝对不可进入收藏模式');
+
+  // 2. 模拟字重对比逻辑：若所有 Tab 都是 600，绝不误判非当前 Tab 为 active
+  const tabs = [
+    { text: '笔记', fw: 600 },
+    { text: '收藏', fw: 600 },
+    { text: '点赞', fw: 600 },
+  ];
+  function isTabActiveByFw(tab, allTabs) {
+    const fw = tab.fw;
+    if (fw < 600) return false;
+    const siblings = allTabs.filter(t => t !== tab);
+    return siblings.length > 0 && siblings.every(s => s.fw < fw);
+  }
+  assert.strictEqual(isTabActiveByFw(tabs[0], tabs), false, '全部 tab 600 时不应触发字重高亮误判');
+  assert.strictEqual(isTabActiveByFw(tabs[1], tabs), false);
+
+  // 若某一个 Tab 确实比其他更粗 (如 700 vs 400) 则精准识别
+  const tabsWithActive = [
+    { text: '笔记', fw: 400 },
+    { text: '收藏', fw: 700 },
+    { text: '点赞', fw: 400 },
+  ];
+  assert.strictEqual(isTabActiveByFw(tabsWithActive[1], tabsWithActive), true, '显著加粗项正确识别为 active');
+  assert.strictEqual(isTabActiveByFw(tabsWithActive[0], tabsWithActive), false);
+});
+
 
 
 

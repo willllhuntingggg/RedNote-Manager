@@ -661,25 +661,33 @@ globalThis.RNStyle = `
   /* 底部操作控制区 */
   .rn-stack-actions {
     width: 100% !important;
+    box-sizing: border-box !important;
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
     gap: 8px !important;
+    flex-wrap: nowrap !important;
   }
   .rn-action-nav-btn {
     all: unset !important;
     cursor: pointer !important;
-    padding: 8px 14px !important;
-    border-radius: 14px !important;
-    font-size: 12.5px !important;
+    box-sizing: border-box !important;
+    height: 38px !important;
+    padding: 0 13px !important;
+    border-radius: 19px !important;
+    font-size: 12px !important;
     font-weight: 500 !important;
     color: #d1d1e0 !important;
     background: rgba(255, 255, 255, 0.08) !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
     transition: all 0.15s ease !important;
-    display: flex !important;
+    display: inline-flex !important;
     align-items: center !important;
+    justify-content: center !important;
     gap: 4px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    user-select: none !important;
   }
   .rn-action-nav-btn:hover {
     background: rgba(255, 255, 255, 0.18) !important;
@@ -691,27 +699,30 @@ globalThis.RNStyle = `
   }
 
   .rn-action-exec-btns {
+    flex: 1 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 12px !important;
+    min-width: 0 !important;
   }
   .rn-stack-action-btn {
     all: unset !important;
     cursor: pointer !important;
     box-sizing: border-box !important;
-    height: 42px !important;
-    padding: 0 20px !important;
-    border-radius: 21px !important;
+    height: 40px !important;
+    padding: 0 16px !important;
+    border-radius: 20px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 8px !important;
-    font-size: 13.5px !important;
+    gap: 6px !important;
+    font-size: 13px !important;
     font-weight: 600 !important;
     letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
     transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+    user-select: none !important;
   }
   .rn-stack-action-btn svg {
     display: block !important;
@@ -768,17 +779,17 @@ globalThis.RNStyle = `
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    font-family: inherit !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
     line-height: 1 !important;
-    padding: 3px 6px !important;
-    border-radius: 5px !important;
-    background: rgba(255, 255, 255, 0.16) !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    background: rgba(255, 255, 255, 0.18) !important;
     border: 1px solid rgba(255, 255, 255, 0.28) !important;
     color: inherit !important;
-    margin-left: 6px !important;
-    letter-spacing: 0.5px !important;
+    margin-left: 5px !important;
+    letter-spacing: 0.3px !important;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
   }
   .rn-stack-nav-kbd {
@@ -792,6 +803,38 @@ globalThis.RNStyle = `
     background: rgba(255, 255, 255, 0.1) !important;
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
     margin-left: 4px !important;
+  }
+
+  /* 底部快捷键全局提示栏 */
+  .rn-stack-tips {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 12px !important;
+    font-size: 11px !important;
+    color: #8c8c9e !important;
+    padding-top: 2px !important;
+    user-select: none !important;
+  }
+  .rn-stack-tips span {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+  }
+  .rn-stack-tips kbd {
+    display: inline-block !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    color: #c4c4d4 !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
   }
 
   .rn-stack-icon-btn {
