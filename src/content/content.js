@@ -1320,6 +1320,11 @@
           nextStackCard('right');
           return;
         }
+        if (ev.key === ' ' || ev.key === 'Enter' || ev.key === 'ArrowDown') {
+          ev.preventDefault();
+          executeStackAction(state.settings.mode);
+          return;
+        }
       }
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       const badge = ev.target && ev.target.closest ? ev.target.closest('.rn-pick') : null;
@@ -1665,32 +1670,41 @@
   const SVG_STAR_FILLED = '<svg viewBox="0 0 24 24" width="22" height="22" fill="#ffb800"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
   const SVG_STAR_OUTLINE = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>';
 
-  function getNoteStatus(note) {
-    if (!note || !note.id) return { liked: false, collected: false };
+  function getNoteStatus(note, targetMode) {
+    if (!note || !note.id) return { active: false, processed: true, liked: false, collected: false };
 
-    let liked;
-    if (typeof note._liked === 'boolean') {
-      liked = note._liked;
-    } else if (isProcessed('unlike', note.id)) {
-      liked = false;
-    } else if (state.modeCache && state.modeCache.unlike && state.modeCache.unlike.some(function (n) { return n.id === note.id; })) {
-      liked = true;
+    const mode = targetMode || (state && state.settings && state.settings.mode) || 'uncollect';
+    const isProc = isProcessed(mode, note.id);
+
+    if (mode === 'unlike') {
+      let active;
+      if (typeof note._liked === 'boolean') {
+        active = note._liked;
+      } else {
+        active = !isProc;
+      }
+      return {
+        mode: 'unlike',
+        active: active,
+        processed: isProc || !active,
+        liked: active,
+        collected: false,
+      };
     } else {
-      liked = (state.settings.mode === 'unlike');
+      let active;
+      if (typeof note._collected === 'boolean') {
+        active = note._collected;
+      } else {
+        active = !isProc;
+      }
+      return {
+        mode: 'uncollect',
+        active: active,
+        processed: isProc || !active,
+        collected: active,
+        liked: false,
+      };
     }
-
-    let collected;
-    if (typeof note._collected === 'boolean') {
-      collected = note._collected;
-    } else if (isProcessed('uncollect', note.id)) {
-      collected = false;
-    } else if (state.modeCache && state.modeCache.uncollect && state.modeCache.uncollect.some(function (n) { return n.id === note.id; })) {
-      collected = true;
-    } else {
-      collected = (state.settings.mode === 'uncollect');
-    }
-
-    return { liked: liked, collected: collected };
   }
 
   function renderStackCard() {
@@ -1728,10 +1742,8 @@
       stackState.els.id.textContent = '';
       stackState.els.btnPrev.disabled = true;
       stackState.els.btnNext.disabled = true;
-      const likeBtn = stackState.els.btnLike || stackState.els.btnUnlike;
-      const collectBtn = stackState.els.btnCollect || stackState.els.btnUncollect;
-      if (likeBtn) likeBtn.disabled = true;
-      if (collectBtn) collectBtn.disabled = true;
+      const actionBtn = stackState.els.btnAction || stackState.els.btnCollect || stackState.els.btnLike;
+      if (actionBtn) actionBtn.disabled = true;
       if (stackState.els.layer1) stackState.els.layer1.style.display = 'none';
       if (stackState.els.layer2) stackState.els.layer2.style.display = 'none';
 
@@ -1816,20 +1828,26 @@
       stackState.els.id.textContent = note.id ? ('ID: ' + note.id) : '';
     }
 
-    // 状态判定
-    const st = getNoteStatus(note);
-    if (!st.liked && !st.collected) {
-      stackState.els.status.textContent = '已取消点赞 & 收藏';
-      stackState.els.status.classList.add('rn-pill-done');
-    } else if (st.liked && st.collected) {
-      stackState.els.status.textContent = '已点赞 ❤️ · 已收藏 ⭐';
-      stackState.els.status.classList.remove('rn-pill-done');
-    } else if (st.liked) {
-      stackState.els.status.textContent = '已点赞 ❤️ · 未收藏';
-      stackState.els.status.classList.toggle('rn-pill-done', state.settings.mode === 'uncollect');
+    // 状态判定与单模式专属展示
+    const curMode = state.settings.mode;
+    const st = getNoteStatus(note, curMode);
+
+    if (curMode === 'unlike') {
+      if (st.processed || !st.active) {
+        stackState.els.status.textContent = '已取消点赞';
+        stackState.els.status.classList.add('rn-pill-done');
+      } else {
+        stackState.els.status.textContent = '已点赞 ❤️';
+        stackState.els.status.classList.remove('rn-pill-done');
+      }
     } else {
-      stackState.els.status.textContent = '已收藏 ⭐ · 未点赞';
-      stackState.els.status.classList.toggle('rn-pill-done', state.settings.mode === 'unlike');
+      if (st.processed || !st.active) {
+        stackState.els.status.textContent = '已取消收藏';
+        stackState.els.status.classList.add('rn-pill-done');
+      } else {
+        stackState.els.status.textContent = '已收藏 ⭐';
+        stackState.els.status.classList.remove('rn-pill-done');
+      }
     }
 
     // 更新导航按钮状态
@@ -1845,21 +1863,29 @@
       stackState.els.btnNext.title = '下一张 (→)';
     }
 
-    // 更新两个原生风格的状态图标按钮（点赞红心 / 收藏黄星）
-    const likeBtn = stackState.els.btnLike || stackState.els.btnUnlike;
-    if (likeBtn) {
-      likeBtn.disabled = stackState.working;
-      likeBtn.classList.toggle('rn-active-liked', st.liked);
-      likeBtn.title = st.liked ? '已点赞（点击取消点赞）' : '未点赞（点击点赞）';
-      likeBtn.innerHTML = st.liked ? SVG_HEART_FILLED : SVG_HEART_OUTLINE;
-    }
-
-    const collectBtn = stackState.els.btnCollect || stackState.els.btnUncollect;
-    if (collectBtn) {
-      collectBtn.disabled = stackState.working;
-      collectBtn.classList.toggle('rn-active-collected', st.collected);
-      collectBtn.title = st.collected ? '已收藏（点击取消收藏）' : '未收藏（点击收藏）';
-      collectBtn.innerHTML = st.collected ? SVG_STAR_FILLED : SVG_STAR_OUTLINE;
+    // 更新单动作专属操作按钮（取消点赞 / 取消收藏）
+    const actionBtn = stackState.els.btnAction || stackState.els.btnCollect || stackState.els.btnLike;
+    if (actionBtn) {
+      actionBtn.disabled = stackState.working || st.processed || !st.active;
+      if (curMode === 'unlike') {
+        actionBtn.className = 'rn-stack-action-btn rn-btn-unlike';
+        if (st.processed || !st.active) {
+          actionBtn.innerHTML = SVG_HEART_OUTLINE + '<span>已取消点赞</span>';
+          actionBtn.title = '该笔记已取消点赞';
+        } else {
+          actionBtn.innerHTML = SVG_HEART_FILLED + '<span>取消点赞</span>';
+          actionBtn.title = '取消点赞 (快捷键: 空格 / 回车 / ↓)';
+        }
+      } else {
+        actionBtn.className = 'rn-stack-action-btn rn-btn-uncollect';
+        if (st.processed || !st.active) {
+          actionBtn.innerHTML = SVG_STAR_OUTLINE + '<span>已取消收藏</span>';
+          actionBtn.title = '该笔记已取消收藏';
+        } else {
+          actionBtn.innerHTML = SVG_STAR_FILLED + '<span>取消收藏</span>';
+          actionBtn.title = '取消收藏 (快捷键: 空格 / 回车 / ↓)';
+        }
+      }
     }
 
     // 更新叠卡顶部撤销按钮状态（仅在有刚才取消的单篇笔记时高亮激活）
@@ -2056,10 +2082,12 @@
     const note = stackState.list[stackState.index];
     if (!note || !note.id) return;
 
-    const st = getNoteStatus(note);
+    const actionType = (type === 'unlike' || type === 'like') ? 'like' : 'collect';
+    const curMode = (actionType === 'like') ? 'unlike' : 'uncollect';
+    const st = getNoteStatus(note, curMode);
 
-    if (type === 'like') {
-      const willUnlike = st.liked;
+    if (actionType === 'like') {
+      const willUnlike = st.active;
       const mode = 'unlike';
       const phase = willUnlike ? 'do' : 'undo';
 
@@ -2116,8 +2144,12 @@
               showToast('已取消点赞');
             }
 
-            // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
-            handleCardProcessedFlyOut(note.id);
+            // 核心：处理过的笔记在叠卡与列表中剔除
+            if (stackState.autoAdvance) {
+              handleCardProcessedFlyOut(note.id);
+            } else {
+              renderStackCard();
+            }
           } else {
             note._liked = true;
             unmarkProcessed('unlike', note.id);
@@ -2140,8 +2172,8 @@
         stackState.working = false;
         renderStackCard();
       }
-    } else if (type === 'collect') {
-      const willUncollect = st.collected;
+    } else if (actionType === 'collect') {
+      const willUncollect = st.active;
       const mode = 'uncollect';
       const phase = willUncollect ? 'do' : 'undo';
 
@@ -2198,8 +2230,12 @@
               showToast('已取消收藏');
             }
 
-            // 核心：处理过的笔记在叠卡与列表中立即剔除不再出现
-            handleCardProcessedFlyOut(note.id);
+            // 核心：处理过的笔记在叠卡与列表中剔除
+            if (stackState.autoAdvance) {
+              handleCardProcessedFlyOut(note.id);
+            } else {
+              renderStackCard();
+            }
           } else {
             note._collected = true;
             unmarkProcessed('uncollect', note.id);
@@ -2226,8 +2262,8 @@
   }
 
   function executeStackAction(mode) {
-    if (mode === 'unlike') return toggleStackAction('like');
-    return toggleStackAction('collect');
+    const curMode = mode || state.settings.mode;
+    return toggleStackAction(curMode === 'unlike' ? 'like' : 'collect');
   }
 
   /* ============================ 运行引擎 ============================ */
@@ -2745,8 +2781,7 @@
       '      <span>⬅</span> 上一个',
       '    </button>',
       '    <div class="rn-action-exec-btns">',
-      '      <button class="rn-stack-icon-btn rn-icon-like" id="rn-stack-like" type="button" aria-label="点赞" title="点赞状态"></button>',
-      '      <button class="rn-stack-icon-btn rn-icon-collect" id="rn-stack-collect" type="button" aria-label="收藏" title="收藏状态"></button>',
+      '      <button class="rn-stack-action-btn" id="rn-stack-action" type="button" aria-label="执行操作" title="取消操作 (快捷键: 空格 / 回车 / ↓)"></button>',
       '    </div>',
       '    <button class="rn-action-nav-btn" id="rn-stack-next" type="button" title="下一张 (→)">',
       '      下一个 <span>➡</span>',
@@ -2791,10 +2826,11 @@
       id: $('#rn-card-id', root),
       btnPrev: $('#rn-stack-prev', root),
       btnNext: $('#rn-stack-next', root),
-      btnLike: $('#rn-stack-like', root),
-      btnCollect: $('#rn-stack-collect', root),
-      btnUncollect: $('#rn-stack-collect', root),
-      btnUnlike: $('#rn-stack-like', root),
+      btnAction: $('#rn-stack-action', root),
+      btnLike: $('#rn-stack-action', root),
+      btnCollect: $('#rn-stack-action', root),
+      btnUncollect: $('#rn-stack-action', root),
+      btnUnlike: $('#rn-stack-action', root),
       btnOpen: $('#rn-card-open-btn', root),
       btnUndo: $('#rn-stack-undo', root),
     };
@@ -2897,15 +2933,13 @@
       nextStackCard('left');
     });
 
-    stackState.els.btnLike.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      toggleStackAction('like');
-    });
-
-    stackState.els.btnCollect.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      toggleStackAction('collect');
-    });
+    const stackActionBtn = stackState.els.btnAction || $('#rn-stack-action', root);
+    if (stackActionBtn) {
+      stackActionBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        executeStackAction(state.settings.mode);
+      });
+    }
 
     if (stackState.els.btnUndo) {
       stackState.els.btnUndo.addEventListener('click', function (ev) {

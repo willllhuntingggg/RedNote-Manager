@@ -346,67 +346,129 @@ test('叠卡速览交互引擎：随机回顾模式（随机下一个）与历�
   assert.strictEqual(stack.index, 0);
 });
 
-test('叠卡速览交互引擎：双状态图标点赞/非点赞（红心/空心）、收藏/非收藏（黄星/空心）状态判定与切换', () => {
+test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取消收藏，点赞模式专注取消点赞，单Action专属按钮与状态判定', () => {
   const processed = { uncollect: new Set(), unlike: new Set() };
   const modeCache = {
     uncollect: [{ id: 'fav1'.padEnd(24, '0') }],
-    unlike: [{ id: 'like1'.padEnd(24, '0') }],
+    unlike: [], // 模拟用户尚未加载点赞列表（以往跨模式查询会导致收藏笔记误显示为空心未点赞）
   };
 
-  function getNoteStatus(note, currentMode) {
-    let liked;
-    if (typeof note._liked === 'boolean') {
-      liked = note._liked;
-    } else if (processed.unlike.has(note.id)) {
-      liked = false;
-    } else if (modeCache.unlike.some((n) => n.id === note.id)) {
-      liked = true;
-    } else {
-      liked = (currentMode === 'unlike');
-    }
+  function getNoteStatus(note, targetMode) {
+    if (!note || !note.id) return { active: false, processed: true, liked: false, collected: false };
+    const mode = targetMode || 'uncollect';
+    const isProc = processed[mode].has(note.id);
 
-    let collected;
-    if (typeof note._collected === 'boolean') {
-      collected = note._collected;
-    } else if (processed.uncollect.has(note.id)) {
-      collected = false;
-    } else if (modeCache.uncollect.some((n) => n.id === note.id)) {
-      collected = true;
+    if (mode === 'unlike') {
+      let active;
+      if (typeof note._liked === 'boolean') {
+        active = note._liked;
+      } else {
+        active = !isProc;
+      }
+      return {
+        mode: 'unlike',
+        active: active,
+        processed: isProc || !active,
+        liked: active,
+        collected: false,
+      };
     } else {
-      collected = (currentMode === 'uncollect');
+      let active;
+      if (typeof note._collected === 'boolean') {
+        active = note._collected;
+      } else {
+        active = !isProc;
+      }
+      return {
+        mode: 'uncollect',
+        active: active,
+        processed: isProc || !active,
+        collected: active,
+        liked: false,
+      };
     }
-
-    return { liked, collected };
   }
 
-  // 1. 在收藏模式下打开一篇收藏笔记：应为 已收藏（黄星） & 未点赞（空心）
+  function renderActionButton(st, mode) {
+    if (mode === 'unlike') {
+      return {
+        className: 'rn-stack-action-btn rn-btn-unlike',
+        text: (st.processed || !st.active) ? '已取消点赞' : '取消点赞',
+        disabled: st.processed || !st.active,
+        statusPill: (st.processed || !st.active) ? '已取消点赞' : '已点赞 ❤️',
+      };
+    } else {
+      return {
+        className: 'rn-stack-action-btn rn-btn-uncollect',
+        text: (st.processed || !st.active) ? '已取消收藏' : '取消收藏',
+        disabled: st.processed || !st.active,
+        statusPill: (st.processed || !st.active) ? '已取消收藏' : '已收藏 ⭐',
+      };
+    }
+  }
+
+  // 1. 收藏模式（取消收藏）：无论点赞缓存是否为空，收藏卡片始终精准展示为已收藏，零跨仓误判
   const noteFav = { id: 'fav1'.padEnd(24, '0'), title: '收藏笔记' };
   let stFav = getNoteStatus(noteFav, 'uncollect');
-  assert.strictEqual(stFav.collected, true, '收藏笔记初始状态为已收藏（黄色五角星）');
-  assert.strictEqual(stFav.liked, false, '非点赞状态为未点赞（空心红心）');
+  assert.strictEqual(stFav.active, true, '收藏笔记初始状态为待处理激活态');
+  assert.strictEqual(stFav.collected, true, '标记为已收藏');
+  assert.strictEqual(stFav.processed, false, '尚未处理');
 
-  // 用户点击黄星（取消收藏）
+  let btnFav = renderActionButton(stFav, 'uncollect');
+  assert.strictEqual(btnFav.className, 'rn-stack-action-btn rn-btn-uncollect');
+  assert.strictEqual(btnFav.text, '取消收藏');
+  assert.strictEqual(btnFav.statusPill, '已收藏 ⭐');
+  assert.strictEqual(btnFav.disabled, false);
+
+  // 用户点击或按空格/回车触发取消收藏
   noteFav._collected = false;
   processed.uncollect.add(noteFav.id);
   stFav = getNoteStatus(noteFav, 'uncollect');
-  assert.strictEqual(stFav.collected, false, '点击后变为空心五角星（非收藏状态）');
+  assert.strictEqual(stFav.active, false, '取消后转为非激活');
+  assert.strictEqual(stFav.processed, true, '已标记为处理完成');
+  btnFav = renderActionButton(stFav, 'uncollect');
+  assert.strictEqual(btnFav.text, '已取消收藏');
+  assert.strictEqual(btnFav.statusPill, '已取消收藏');
+  assert.strictEqual(btnFav.disabled, true);
 
-  // 用户点击空心红心（进行点赞）
-  noteFav._liked = true;
-  stFav = getNoteStatus(noteFav, 'uncollect');
-  assert.strictEqual(stFav.liked, true, '点击后变为红心（已点赞状态）');
-
-  // 2. 在点赞模式下打开一篇点赞笔记：应为 已点赞（红心） & 未收藏（空心）
+  // 2. 点赞模式（取消点赞）：无论收藏缓存状态如何，点赞卡片始终专注点赞本身
+  modeCache.unlike.push({ id: 'like1'.padEnd(24, '0') });
   const noteLike = { id: 'like1'.padEnd(24, '0'), title: '点赞笔记' };
   let stLike = getNoteStatus(noteLike, 'unlike');
-  assert.strictEqual(stLike.liked, true, '点赞笔记初始状态为已点赞（红心）');
-  assert.strictEqual(stLike.collected, false, '非收藏状态为未收藏（空心五角星）');
+  assert.strictEqual(stLike.active, true, '点赞笔记初始状态为待处理激活态');
+  assert.strictEqual(stLike.liked, true, '标记为已点赞');
+  assert.strictEqual(stLike.processed, false, '尚未处理');
 
-  // 用户点击红心（取消点赞）
+  let btnLike = renderActionButton(stLike, 'unlike');
+  assert.strictEqual(btnLike.className, 'rn-stack-action-btn rn-btn-unlike');
+  assert.strictEqual(btnLike.text, '取消点赞');
+  assert.strictEqual(btnLike.statusPill, '已点赞 ❤️');
+  assert.strictEqual(btnLike.disabled, false);
+
+  // 用户点击或按空格/回车触发取消点赞
   noteLike._liked = false;
   processed.unlike.add(noteLike.id);
   stLike = getNoteStatus(noteLike, 'unlike');
-  assert.strictEqual(stLike.liked, false, '点击后变为空心红心（非点赞状态）');
+  assert.strictEqual(stLike.active, false, '取消后转为非激活');
+  assert.strictEqual(stLike.processed, true, '已标记为处理完成');
+  btnLike = renderActionButton(stLike, 'unlike');
+  assert.strictEqual(btnLike.text, '已取消点赞');
+  assert.strictEqual(btnLike.statusPill, '已取消点赞');
+  assert.strictEqual(btnLike.disabled, true);
+
+  // 3. 验证快捷键映射行为：空格、回车、方向键下均映射到当前模式的操作执行
+  const actionDispatched = [];
+  function handleKeyDown(key, currentMode) {
+    if (key === ' ' || key === 'Enter' || key === 'ArrowDown') {
+      actionDispatched.push(currentMode);
+      return true;
+    }
+    return false;
+  }
+  assert.strictEqual(handleKeyDown(' ', 'uncollect'), true);
+  assert.strictEqual(handleKeyDown('Enter', 'uncollect'), true);
+  assert.strictEqual(handleKeyDown('ArrowDown', 'unlike'), true);
+  assert.deepStrictEqual(actionDispatched, ['uncollect', 'uncollect', 'unlike']);
 });
 
 test('侧边栏模式切换 Tab：精简文案为「收藏」与「点赞」并保留计数角标', () => {

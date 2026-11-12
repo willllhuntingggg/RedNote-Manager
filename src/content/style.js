@@ -693,8 +693,76 @@ globalThis.RNStyle = `
   .rn-action-exec-btns {
     display: flex !important;
     align-items: center !important;
-    gap: 16px !important;
+    justify-content: center !important;
+    gap: 12px !important;
   }
+  .rn-stack-action-btn {
+    all: unset !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    height: 42px !important;
+    padding: 0 20px !important;
+    border-radius: 21px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+  }
+  .rn-stack-action-btn svg {
+    display: block !important;
+    flex-shrink: 0 !important;
+    width: 20px !important;
+    height: 20px !important;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  }
+  .rn-stack-action-btn:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.03) !important;
+  }
+  .rn-stack-action-btn:hover:not(:disabled) svg {
+    transform: scale(1.15) !important;
+  }
+  .rn-stack-action-btn:active:not(:disabled) {
+    transform: scale(0.96) !important;
+  }
+  .rn-stack-action-btn:disabled {
+    opacity: 0.35 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+  }
+
+  /* 收藏模式专属按钮高光色彩 */
+  .rn-stack-action-btn.rn-btn-uncollect {
+    background: linear-gradient(135deg, rgba(255, 184, 0, 0.22), rgba(255, 184, 0, 0.12)) !important;
+    border: 1px solid rgba(255, 184, 0, 0.55) !important;
+    color: #ffcf4d !important;
+    box-shadow: 0 4px 16px rgba(255, 184, 0, 0.25) !important;
+  }
+  .rn-stack-action-btn.rn-btn-uncollect:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(255, 184, 0, 0.34), rgba(255, 184, 0, 0.18)) !important;
+    border-color: #ffb800 !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(255, 184, 0, 0.4) !important;
+  }
+
+  /* 点赞模式专属按钮高光色彩 */
+  .rn-stack-action-btn.rn-btn-unlike {
+    background: linear-gradient(135deg, rgba(255, 46, 77, 0.22), rgba(255, 46, 77, 0.12)) !important;
+    border: 1px solid rgba(255, 46, 77, 0.55) !important;
+    color: #ff8597 !important;
+    box-shadow: 0 4px 16px rgba(255, 46, 77, 0.25) !important;
+  }
+  .rn-stack-action-btn.rn-btn-unlike:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(255, 46, 77, 0.34), rgba(255, 46, 77, 0.18)) !important;
+    border-color: #ff2e4d !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 20px rgba(255, 46, 77, 0.4) !important;
+  }
+
   .rn-stack-icon-btn {
     all: unset !important;
     cursor: pointer !important;
