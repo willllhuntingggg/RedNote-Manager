@@ -660,7 +660,10 @@ function bindEvents() {
   });
 
   // 操作按钮
-  $('rn-scan').addEventListener('click', async function () {
+  $('rn-scan').addEventListener('click', async function (ev) {
+    if (ev && ev.shiftKey) {
+      await sendToTab('RN_REFRESH_CACHE');
+    }
     await sendToTab('RN_ACTION', { action: 'scan' });
     requestState();
   });

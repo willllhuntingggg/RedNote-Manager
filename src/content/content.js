@@ -514,8 +514,46 @@
   }
 
   let currentScannedTabType = '';
-  let staleCardsFromPreviousTab = null;
-  let tabSwitchTimestamp = 0;
+  let tabTransitionLock = false;
+  let tabTransitionTarget = '';
+  let tabTransitionStaleIds = new Set();
+  let tabTransitionStartTime = 0;
+  let activeScanSessionId = 0;
+
+  /**
+   * 即刻熔断所有正在执行的后台读取/扫描循环，并递增会话标识
+   */
+  function abortActiveScan(reason) {
+    activeScanSessionId++;
+    if (state.scanning || state.running) {
+      state.stopRequested = true;
+      state.scanning = false;
+      log('已中止先前执行中的读取扫描（' + (reason || 'Tab 切换') + '）以彻底杜绝串仓', 'warn');
+      broadcastState();
+    }
+  }
+
+  /**
+   * 启动严格的 Tab 切换过渡保护：
+   * 1. 立即熔断后台扫描任务；
+   * 2. 拍摄当前 DOM 中所有卡片 ID 作为陈旧卡片黑名单；
+   * 3. 开启 tabTransitionLock，直至页面完全渲染新卡片且无旧卡片残留。
+   */
+  function beginTabTransition(targetTab) {
+    if (!targetTab || (targetTab !== 'collect' && targetTab !== 'like' && targetTab !== 'notes')) return;
+
+    abortActiveScan('切换标签至「' + (targetTab === 'like' ? '点赞' : (targetTab === 'collect' ? '收藏' : '发布笔记')) + '」');
+
+    // 记录切换前页面的旧卡片黑名单
+    const ids = pageCardIds();
+    tabTransitionStaleIds = new Set(ids);
+    tabTransitionLock = true;
+    tabTransitionTarget = targetTab;
+    tabTransitionStartTime = Date.now();
+    currentScannedTabType = targetTab;
+
+    clearPageCards();
+  }
 
   /**
    * 自动感知用户在页面上已加载/滚动的笔记，无感合入对应模式的独立 candidates 缓存。
@@ -533,13 +571,44 @@
       return false;
     }
 
-    // 严密防串仓机制：一旦检测到 Tab 切换，立即把切换瞬间残留在 DOM 中的旧 Tab 卡片列入黑名单，
-    // 绝不允许在异步加载的空档期把前一个 Tab 的旧卡片误当作新 Tab 的卡片入库！
-    if (currentScannedTabType && currentScannedTabType !== actualTab) {
-      staleCardsFromPreviousTab = new Set(pageCardIds());
-      tabSwitchTimestamp = Date.now();
+    // 检测到隐式 Tab 切换（例如用户后退/前进或第三方点击）
+    if (currentScannedTabType && currentScannedTabType !== actualTab && !tabTransitionLock) {
+      beginTabTransition(actualTab);
     }
-    currentScannedTabType = actualTab;
+    if (!currentScannedTabType) {
+      currentScannedTabType = actualTab;
+    }
+
+    // 过渡期严格防护：
+    if (tabTransitionLock) {
+      // 若实际 Tab 尚未切到目标 Tab，坚决不读
+      if (actualTab !== tabTransitionTarget) {
+        return false;
+      }
+
+      const allCards = scanCards();
+      if (!allCards.length) {
+        // DOM 处于清空状态（加载中），旧卡片已卸载
+        tabTransitionStaleIds.clear();
+        return false;
+      }
+
+      // 检查 DOM 中是否仍残留着切换前拍摄的旧卡片
+      const hasStaleCardsInDom = allCards.some(function (c) {
+        return tabTransitionStaleIds.has(c.id);
+      });
+
+      if (hasStaleCardsInDom) {
+        // 只要 DOM 中哪怕还有 1 张旧 Tab 残留卡片，说明小红书异步渲染尚未换批完毕，过渡期坚决阻断！
+        if (Date.now() - tabTransitionStartTime < 6000) {
+          return false;
+        }
+      } else {
+        // DOM 中已完全无旧卡片残留，且已渲染出全新卡片，安全释放过渡锁！
+        tabTransitionLock = false;
+        tabTransitionStaleIds.clear();
+      }
+    }
 
     const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
     if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
@@ -548,23 +617,16 @@
     const cards = scanCards();
     if (!cards.length) return false;
 
-    // 过滤掉前一个 Tab 残留在 DOM 里的旧卡片
+    // 过滤掉前一个 Tab 残留在 DOM 里的旧卡片以及本人发布的笔记
     const validCards = [];
-    let hasFreshCard = false;
     for (let i = 0; i < cards.length; i++) {
       const c = cards[i];
       if (isOwnNote(c)) continue;
-      if (staleCardsFromPreviousTab && staleCardsFromPreviousTab.has(c.id)) {
+      if (tabTransitionStaleIds.has(c.id)) {
         // 这是前一个 Tab 残留在页面上的旧卡片，过渡期坚决丢弃！
         continue;
       }
-      hasFreshCard = true;
       validCards.push(c);
-    }
-
-    // 只有当页面上确实渲染出了全新的当前 Tab 卡片（存在非旧 Tab 残留卡片）时，才安全解除过渡黑名单保护
-    if (hasFreshCard && staleCardsFromPreviousTab) {
-      staleCardsFromPreviousTab = null;
     }
 
     if (!validCards.length) return false;
@@ -745,30 +807,48 @@
     return el ? ((el.textContent || '').replace(/\s+/g, '').replace(/\d+/g, '')) : '';
   }
 
-  /** 切完标签后卡片是异步渲染的，必须等到新 Tab 的非旧卡片出现再算就绪 */
-  async function waitForCards(timeoutMs) {
+  /** 切完标签后卡片是异步渲染的，必须等到新 Tab 的卡片出现且无旧卡片残留再算就绪 */
+  async function waitForCards(timeoutMs, expectedTab) {
     const end = nowMs() + (timeoutMs || 6000);
     while (nowMs() < end) {
+      const curTab = getPageActualTabType();
+      if (expectedTab && curTab !== expectedTab) {
+        await sleep(200);
+        continue;
+      }
       const cards = scanCards();
-      const hasFresh = cards.some(function (c) {
-        return !staleCardsFromPreviousTab || !staleCardsFromPreviousTab.has(c.id);
-      });
-      if (hasFresh) return true;
-      await sleep(250);
+      if (cards.length > 0) {
+        const hasStale = cards.some(function (c) {
+          return tabTransitionStaleIds.has(c.id);
+        });
+        if (!hasStale) {
+          tabTransitionLock = false;
+          tabTransitionStaleIds.clear();
+          return true;
+        }
+      }
+      await sleep(200);
     }
     return false;
   }
 
   async function ensureTab(want) {
+    const wantTab = detectTabFromText(want);
     const cur = activeTabEl();
-    if (cur && tabMatches(cur, want)) return true;
+    if (cur && tabMatches(cur, want)) {
+      if (wantTab && wantTab !== currentScannedTabType) {
+        beginTabTransition(wantTab);
+      }
+      return true;
+    }
 
     const target = mainTabs().filter(function (el) { return tabMatches(el, want); })[0];
     if (!target) return false;
 
-    // 记录切换前页面的旧卡片黑名单，避免异步渲染过渡期旧卡片被误收入新模式
-    staleCardsFromPreviousTab = new Set(pageCardIds());
-    tabSwitchTimestamp = Date.now();
+    // 记录切换前页面的旧卡片黑名单并熔断先前扫描
+    if (wantTab) {
+      beginTabTransition(wantTab);
+    }
 
     // 触发点击切换（支持原生与事件冒泡分发）
     try {
@@ -782,11 +862,11 @@
       await sleep(200);
       const a = activeTabEl();
       if (a && tabMatches(a, want)) {
-        await sleep(350);
+        await sleep(200);
         return true;
       }
     }
-    await sleep(300);
+    await sleep(200);
     const finalA = activeTabEl();
     return !!(finalA && tabMatches(finalA, want));
   }
@@ -828,6 +908,11 @@
   }
 
   async function collectCandidates() {
+    const mySessionId = ++activeScanSessionId;
+    state.scanning = true;
+    state.stopRequested = false;
+    broadcastState();
+
     const m = state.settings.mode;
     const M = C.MODES[m];
     const expectedTab = (m === 'unlike') ? 'like' : 'collect';
@@ -836,12 +921,15 @@
     let curTab = getPageActualTabType();
     if (curTab && curTab !== expectedTab) {
       log('当前在「' + (curTab === 'like' ? '点赞' : (curTab === 'collect' ? '收藏' : '我的笔记')) + '」，正在切换至「' + M.tabLabel + '」…', 'info');
+      beginTabTransition(expectedTab);
       await ensureTab(M.tabLabel);
       await waitForCards(6000, expectedTab);
       curTab = getPageActualTabType();
     }
-    if (curTab && curTab !== expectedTab) {
-      log('页面当前未能进入「' + M.tabLabel + '」列表，已终止读取以彻底杜绝串仓', 'err');
+    if (curTab !== expectedTab || activeScanSessionId !== mySessionId || state.stopRequested) {
+      log('页面当前未能进入「' + M.tabLabel + '」列表或任务已重置，已终止读取以彻底杜绝串仓', 'err');
+      state.scanning = false;
+      broadcastState();
       return (state.modeCache && state.modeCache[m]) || [];
     }
 
@@ -860,13 +948,15 @@
     });
 
     const merge = function () {
+      if (activeScanSessionId !== mySessionId || state.stopRequested) return 0;
       const activeTabNow = getPageActualTabType();
-      if (activeTabNow && activeTabNow !== expectedTab) {
+      if (!activeTabNow || activeTabNow !== expectedTab) {
         // 过渡期或 Tab 错位时严格拒绝入库！
         return 0;
       }
       let added = 0;
       scanCards().forEach(function (n) {
+        if (tabTransitionStaleIds.has(n.id)) return;
         if (!acc.has(n.id)) {
           acc.set(n.id, n);
           added++;
@@ -898,14 +988,24 @@
     let lastLogTime = nowMs();
 
     while (nowMs() - started < budget && acc.size < cap) {
-      if (state.stopRequested) {
-        log('已手动停止扫描，当前保留已识别的 ' + acc.size + ' 篇笔记', 'warn');
+      if (activeScanSessionId !== mySessionId || state.stopRequested) {
+        log('已停止扫描列表，当前保留已识别的 ' + acc.size + ' 篇笔记', 'warn');
+        break;
+      }
+
+      const curTabNow = getPageActualTabType();
+      if (curTabNow !== expectedTab) {
+        log('检测到页面已离开「' + M.tabLabel + '」列表，已立即中止扫描以彻底杜绝串仓', 'warn');
         break;
       }
 
       const before = acc.size;
       const atBottom = scrollStep();
       await sleep(700);
+
+      if (activeScanSessionId !== mySessionId || state.stopRequested) break;
+      if (getPageActualTabType() !== expectedTab) break;
+
       merge();
 
       // 实时同步数据到全局状态与面板计数看板
@@ -944,6 +1044,8 @@
         }
 
         await sleep(1000);
+        if (activeScanSessionId !== mySessionId || state.stopRequested) break;
+        if (getPageActualTabType() !== expectedTab) break;
         merge();
       }
     }
@@ -952,6 +1054,8 @@
     const result = Array.from(acc.values());
     state.modeCache[m] = result;
     syncActiveModePointers();
+    state.scanning = false;
+    broadcastState();
     return result;
   }
 
@@ -1421,12 +1525,14 @@
       observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch (e) { /* 忽略 */ }
 
-    // 监听小红书页面主标签点击：根据被点击的 Tab 立即同步模式，切换对应独立缓存并延迟扫描
+    // 监听小红书页面主标签点击：根据被点击的 Tab 立即同步模式，切换对应独立缓存并安全过渡
     window.addEventListener('click', function (ev) {
       const tab = ev.target && ev.target.closest && ev.target.closest('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]');
       if (tab) {
         const detected = detectTabFromText(tab.textContent);
         if (detected) {
+          beginTabTransition(detected);
+
           if (detected === 'like') {
             state.settings.mode = 'unlike';
             saveSettings();
@@ -1441,15 +1547,13 @@
           clearPageCards();
           broadcastState();
 
-          // 延迟扫描：等新 Tab 的卡片 DOM 渲染完成并合入对应缓存
-          setTimeout(function () {
-            if (syncDomCardsToCandidates()) broadcastState();
-            refreshPageCards();
-          }, 350);
-          setTimeout(function () {
-            if (syncDomCardsToCandidates()) broadcastState();
-            refreshPageCards();
-          }, 850);
+          // 等待新 Tab 的卡片 DOM 渲染就绪并安全合入对应缓存（绝不在旧卡片残留时盲扫）
+          waitForCards(4500, detected).then(function (ok) {
+            if (ok) {
+              if (syncDomCardsToCandidates()) broadcastState();
+              refreshPageCards();
+            }
+          });
         }
       }
     }, true);
@@ -2678,6 +2782,8 @@
     state.modeCache = { uncollect: [], unlike: [] };
     state.modeSelected = { uncollect: new Map(), unlike: new Map() };
     syncActiveModePointers();
+    tabTransitionLock = false;
+    tabTransitionStaleIds.clear();
     saveProcessed();
     await saveHistory();
     log('已清空本地记录与各模式缓存', 'ok');
@@ -2687,6 +2793,10 @@
   function setMode(mode) {
     if (!C.MODES[mode] || state.running) return;
     if (state.settings.mode === mode) return;
+
+    const targetTab = mode === 'unlike' ? 'like' : 'collect';
+    beginTabTransition(targetTab);
+
     state.settings.mode = mode;
     saveSettings();
     syncActiveModePointers(); // 切换指针到当前模式的独立缓存！
@@ -2702,18 +2812,14 @@
     if (PROFILE_RE.test(location.pathname) && !isOwnNotesPage()) {
       const targetLabel = C.MODES[mode].tabLabel;
       ensureTab(targetLabel).then(function () {
-        setTimeout(function () {
-          if (syncDomCardsToCandidates()) {
-            refreshPageCards();
-            broadcastState();
+        waitForCards(4000, targetTab).then(function (ok) {
+          if (ok) {
+            if (syncDomCardsToCandidates()) {
+              refreshPageCards();
+              broadcastState();
+            }
           }
-        }, 350);
-        setTimeout(function () {
-          if (syncDomCardsToCandidates()) {
-            refreshPageCards();
-            broadcastState();
-          }
-        }, 850);
+        });
       }).catch(function () {});
     }
   }
@@ -3112,14 +3218,17 @@
       return;
     }
     if (msg.type === 'RN_REFRESH_CACHE') {
+      abortActiveScan('刷新独立缓存');
       state.modeCache = { uncollect: [], unlike: [] };
       state.modeSelected = { uncollect: new Map(), unlike: new Map() };
       syncActiveModePointers();
-      staleCardsFromPreviousTab = null;
+      tabTransitionLock = false;
+      tabTransitionStaleIds.clear();
+      clearPageCards();
       syncDomCardsToCandidates();
       refreshPageCards();
       broadcastState();
-      log('已清空独立缓存并重新从页面读取', 'ok');
+      log('已清空所有独立缓存，当前已纯净重载页面卡片', 'ok');
       sendResponse({ ok: true, state: fullPublicState() });
       return;
     }
@@ -3238,6 +3347,10 @@
   function onUrlChange() {
     if (location.href !== lastKnownUrl) {
       lastKnownUrl = location.href;
+      const detected = getPageActualTabType();
+      if (detected && detected !== currentScannedTabType) {
+        beginTabTransition(detected);
+      }
       syncModeWithActiveTab();
 
       // 切 Tab / URL 变化时，切换至对应模式的独立缓存
@@ -3246,15 +3359,13 @@
       clearPageCards();
       broadcastState();
 
-      if (!isOwnNotesPage()) {
-        setTimeout(function () {
-          if (syncDomCardsToCandidates()) broadcastState();
-          refreshPageCards();
-        }, 350);
-        setTimeout(function () {
-          if (syncDomCardsToCandidates()) broadcastState();
-          refreshPageCards();
-        }, 850);
+      if (!isOwnNotesPage() && detected) {
+        waitForCards(4000, detected).then(function (ok) {
+          if (ok) {
+            if (syncDomCardsToCandidates()) broadcastState();
+            refreshPageCards();
+          }
+        });
       }
     }
   }

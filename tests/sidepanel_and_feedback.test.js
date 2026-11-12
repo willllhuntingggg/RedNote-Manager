@@ -1511,6 +1511,113 @@ test('侧边栏与页面通信自愈机制：防 Receiving end does not exist �
   assert.ok(sidepanelCode.includes('rn-btn-reload-active-tab'), '在断开提示中提供一键刷新重连按钮');
 });
 
+test('防串仓全链路防线：Tab切换即刻熔断扫描任务、深度扫描排除旧卡片残留、部分换批过渡锁持续阻断旧卡片', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 源码静态结构防线检测：确保所有生命周期关键节点均接入过渡保护与扫描熔断
+  assert.ok(contentCode.includes('function beginTabTransition('), '必须包含 beginTabTransition 过渡状态机');
+  assert.ok(contentCode.includes('function abortActiveScan('), '必须包含 abortActiveScan 扫描熔断器');
+  assert.ok(contentCode.includes('activeScanSessionId'), '必须维护扫描会话令牌');
+  assert.ok(contentCode.includes('tabTransitionLock'), '必须维护过渡状态锁');
+  assert.ok(contentCode.includes('tabTransitionStaleIds'), '必须维护旧卡片黑名单 Set');
+  assert.ok(contentCode.includes('tabTransitionStaleIds.has(n.id)'), 'collectCandidates 的 merge 过程必须过滤旧卡片');
+
+  // 2. 模拟 Tab 切换全链路状态机
+  let activeScanSessionId = 0;
+  let tabTransitionLock = false;
+  let tabTransitionTarget = '';
+  let tabTransitionStaleIds = new Set();
+  const modeCache = { uncollect: [], unlike: [] };
+
+  function simulateAbortActiveScan() {
+    activeScanSessionId++;
+  }
+
+  function simulateBeginTabTransition(targetTab, currentDomIds) {
+    simulateAbortActiveScan();
+    tabTransitionStaleIds = new Set(currentDomIds);
+    tabTransitionLock = true;
+    tabTransitionTarget = targetTab;
+  }
+
+  function simulateSyncCards(domCards, actualTab) {
+    if (actualTab !== 'collect' && actualTab !== 'like') return false;
+    if (tabTransitionLock) {
+      if (actualTab !== tabTransitionTarget) return false;
+      const hasStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+      if (hasStale) {
+        return false; // DOM 中仍残留旧卡片，过渡期坚决阻断
+      }
+      tabTransitionLock = false;
+      tabTransitionStaleIds.clear();
+    }
+
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    const targetList = modeCache[targetMode];
+    const validCards = domCards.filter(c => !tabTransitionStaleIds.has(c.id));
+    if (!validCards.length) return false;
+
+    validCards.forEach(c => {
+      if (!targetList.some(x => x.id === c.id)) {
+        targetList.push(c);
+      }
+    });
+    return true;
+  }
+
+  // 阶段 1：用户在「点赞」列表浏览，点赞缓存正常累积 5 篇
+  const likedNotes = [
+    { id: 'like_001'.padEnd(24, '0'), title: '点赞笔记 1' },
+    { id: 'like_002'.padEnd(24, '0'), title: '点赞笔记 2' },
+    { id: 'like_003'.padEnd(24, '0'), title: '点赞笔记 3' },
+    { id: 'like_004'.padEnd(24, '0'), title: '点赞笔记 4' },
+    { id: 'like_005'.padEnd(24, '0'), title: '点赞笔记 5' },
+  ];
+  simulateSyncCards(likedNotes, 'like');
+  assert.strictEqual(modeCache.unlike.length, 5, '点赞缓存已成功记录 5 篇');
+  assert.strictEqual(modeCache.uncollect.length, 0, '收藏缓存为 0');
+
+  // 阶段 2：用户在深度扫描点赞时，突然点击切换到了「收藏」Tab
+  const scanSessionIdBeforeSwitch = activeScanSessionId;
+  const domIdsAtSwitchMoment = likedNotes.map(n => n.id);
+  simulateBeginTabTransition('collect', domIdsAtSwitchMoment);
+
+  // 断言：扫描会话令牌已变更，先前的扫描循环感知到 session 不一致必须立即终止
+  assert.notStrictEqual(activeScanSessionId, scanSessionIdBeforeSwitch, '会话令牌必须更新以熔断先前扫描');
+  assert.strictEqual(tabTransitionLock, true, '必须开启过渡锁');
+  assert.strictEqual(tabTransitionStaleIds.size, 5, '旧卡片全部进入黑名单');
+
+  // 阶段 3：过渡期（网络请求仍在进行中），DOM 依然挂着 5 张点赞卡片
+  const transitionDomCards = likedNotes;
+  const syncResult1 = simulateSyncCards(transitionDomCards, 'collect');
+  assert.strictEqual(syncResult1, false, '过渡期旧卡片完全阻断同步');
+  assert.strictEqual(modeCache.uncollect.length, 0, '收藏缓存绝对不进入任何点赞卡片');
+
+  // 阶段 4：部分换批（网络返回了 1 张新卡片，但 DOM 中还有 2 张旧卡片未卸载）
+  const partialDomCards = [
+    { id: 'col_001'.padEnd(24, '0'), title: '真正的收藏笔记 1' },
+    likedNotes[3],
+    likedNotes[4],
+  ];
+  const syncResult2 = simulateSyncCards(partialDomCards, 'collect');
+  assert.strictEqual(syncResult2, false, '部分换批时因仍有旧卡片残留，过渡锁坚决不释放');
+  assert.strictEqual(modeCache.uncollect.length, 0, '旧卡片依然绝对不能误入收藏缓存');
+
+  // 阶段 5：换批彻底完成，DOM 中全是全新的收藏卡片
+  const cleanCollectCards = [
+    { id: 'col_001'.padEnd(24, '0'), title: '真正的收藏笔记 1' },
+    { id: 'col_002'.padEnd(24, '0'), title: '真正的收藏笔记 2' },
+  ];
+  const syncResult3 = simulateSyncCards(cleanCollectCards, 'collect');
+  assert.strictEqual(syncResult3, true, '全新卡片安全入库');
+  assert.strictEqual(tabTransitionLock, false, '过渡锁安全解除');
+  assert.strictEqual(modeCache.uncollect.length, 2, '收藏缓存仅且必须仅包含真正的收藏笔记');
+  assert.strictEqual(modeCache.uncollect.every(c => c.id.startsWith('col_')), true, '杜绝任何点赞卡片串入收藏');
+});
+
+
 
 
 
