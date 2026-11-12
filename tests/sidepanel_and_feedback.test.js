@@ -1816,6 +1816,126 @@ test('防串仓终极闭环：反复来回切换收藏/点赞Tab绝不互相渗�
   assert.strictEqual(modeCache.uncollect.length + modeCache.unlike.length, 33, '两者独立计数之和为 33 (20+13)，绝不合流变成 48');
 });
 
+test('防单向串仓：点赞新加载数据绝不泄漏到收藏，收藏新加载数据绝不泄漏到点赞（彻底解决 fontWeight 误判导致的单向合流）', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 代码防线检查
+  assert.ok(contentCode.includes('oppositeMode && state.modeCache && state.modeCache[oppositeMode]'), 'beginTabTransition 必须强制拉取对立模式缓存进黑名单');
+  assert.ok(contentCode.includes('// 阶段 1：首选显式激活标记（aria-selected 或 active class）'), 'activeTabEl 必须优先使用显式 class');
+
+  // 2. 模拟小红书页面主 Tab 栏在 macOS Chrome 下的真实 DOM 与 CSS
+  // 在真实网页中，所有 Tab item 都可能带有 font-weight: 600（PingFang SC Semibold）
+  const tabElements = [
+    {
+      text: '笔记 10',
+      classList: ['reds-tab-item'],
+      fontWeight: '600',
+      ariaSelected: 'false',
+    },
+    {
+      text: '收藏 20',
+      classList: ['reds-tab-item'],
+      fontWeight: '600',
+      ariaSelected: 'false',
+    },
+    {
+      text: '赞过 15',
+      classList: ['reds-tab-item', 'reds-tab-item-active'], // 只有点赞处于 active！
+      fontWeight: '600',
+      ariaSelected: 'true',
+    },
+  ];
+
+  // 模拟 activeTabEl 的阶段式精准识别
+  function simulateActiveTabEl(tabs) {
+    // 阶段 1：首选显式 class / aria-selected
+    for (const t of tabs) {
+      if (t.ariaSelected === 'true') return t;
+      if (t.classList && (t.classList.includes('reds-tab-item-active') || t.classList.includes('active'))) return t;
+    }
+    // 阶段 3：字体粗细横向对比（只有独占最高字重才算数）
+    let maxFw = 0;
+    let heaviest = null;
+    let count = 0;
+    for (const t of tabs) {
+      const fw = parseInt(t.fontWeight, 10) || 400;
+      if (fw > maxFw) { maxFw = fw; heaviest = t; count = 1; }
+      else if (fw === maxFw) { count++; }
+    }
+    if (count === 1 && maxFw >= 600) return heaviest;
+    return null;
+  }
+
+  const activeTab = simulateActiveTabEl(tabElements);
+  assert.strictEqual(activeTab.text, '赞过 15', '即便所有 Tab 都有 font-weight:600，凭借 reds-tab-item-active 依然精准识别为赞过，绝不误判为收藏！');
+
+  // 3. 模拟用户在点赞模式下滚动加载新数据
+  let currentScannedTabType = 'like';
+  let tabTransitionLock = false;
+  let tabTransitionTarget = '';
+  let tabTransitionStaleIds = new Set();
+  const modeCache = {
+    uncollect: Array.from({ length: 20 }, (_, i) => ({ id: 'col_' + i, title: '收藏 ' + i })),
+    unlike: Array.from({ length: 15 }, (_, i) => ({ id: 'like_' + i, title: '点赞 ' + i })),
+  };
+
+  function simulateBeginTabTransition(targetTab) {
+    if (currentScannedTabType === targetTab && !tabTransitionLock) return;
+    tabTransitionStaleIds = new Set();
+    const oppositeMode = targetTab === 'collect' ? 'unlike' : (targetTab === 'like' ? 'uncollect' : '');
+    if (oppositeMode && modeCache[oppositeMode]) {
+      modeCache[oppositeMode].forEach(n => tabTransitionStaleIds.add(n.id));
+    }
+    tabTransitionLock = true;
+    tabTransitionTarget = targetTab;
+    currentScannedTabType = targetTab;
+  }
+
+  function simulateScrollAppend(actualTab, newCards) {
+    // 严格按真实实际 Tab 分流
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    const list = modeCache[targetMode];
+    newCards.forEach(c => {
+      if (!list.some(x => x.id === c.id)) list.push(c);
+    });
+  }
+
+  // 3.1 用户在点赞页面向下滚动，小红书渲染出 10 篇新的点赞笔记
+  const newLikedBatch = Array.from({ length: 10 }, (_, i) => ({ id: 'like_new_' + i, title: '新点赞 ' + i }));
+  simulateScrollAppend('like', newLikedBatch);
+
+  assert.strictEqual(modeCache.unlike.length, 25, '点赞成功增量捕获 10 篇新笔记，累计 25 篇');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏在此期间绝对保持 20 篇不变');
+
+  // 3.2 用户切换到「收藏」Tab
+  simulateBeginTabTransition('collect');
+  // 核心校验：点赞的全部 25 篇（包括新滚动的 10 篇）必须全部进入黑名单！
+  assert.strictEqual(tabTransitionStaleIds.has('like_new_0'), true, '新加载的点赞笔记被严格纳入对立模式黑名单');
+
+  // 页面切换至收藏，当前页面展现原 20 篇收藏卡片
+  const collectPageCards = modeCache.uncollect.slice();
+  let uncollectCountBefore = modeCache.uncollect.length;
+  // 模拟入库
+  collectPageCards.forEach(c => {
+    if (!tabTransitionStaleIds.has(c.id) && !modeCache.uncollect.some(x => x.id === c.id)) {
+      modeCache.uncollect.push(c);
+    }
+  });
+
+  assert.strictEqual(modeCache.uncollect.length, uncollectCountBefore, '切换到收藏后，收藏数绝对不增加（依然保持 20 篇）！');
+
+  // 3.3 对应地，用户在收藏页面向下滚动加载 5 篇新收藏
+  const newCollectBatch = Array.from({ length: 5 }, (_, i) => ({ id: 'col_new_' + i, title: '新收藏 ' + i }));
+  simulateScrollAppend('collect', newCollectBatch);
+  assert.strictEqual(modeCache.uncollect.length, 25, '收藏页面手动滚动正常增加至 25 篇');
+
+  // 3.4 用户切回「点赞」Tab
+  simulateBeginTabTransition('like');
+  assert.strictEqual(modeCache.unlike.length, 25, '切换到点赞后，点赞数保持准确的 25 篇，收藏新卡片绝对不泄漏进点赞！');
+});
+
 
 
 

@@ -596,12 +596,20 @@
 
     abortActiveScan('切换标签至「' + (targetTab === 'like' ? '点赞' : (targetTab === 'collect' ? '收藏' : '发布笔记')) + '」');
 
-    // 记录切换前页面的旧卡片黑名单（包含当前 DOM 里的所有卡片，以及前一个模式已缓存的所有卡片）
+    // 记录切换前页面的旧卡片黑名单（包含当前 DOM 里的所有卡片，以及前一模式和对立模式已缓存的所有卡片）
     const ids = pageCardIds();
     tabTransitionStaleIds = new Set(ids);
+
     const prevMode = currentScannedTabType === 'like' ? 'unlike' : (currentScannedTabType === 'collect' ? 'uncollect' : '');
     if (prevMode && state.modeCache && state.modeCache[prevMode]) {
       state.modeCache[prevMode].forEach(function (n) {
+        if (n && n.id) tabTransitionStaleIds.add(n.id);
+      });
+    }
+
+    const oppositeMode = targetTab === 'collect' ? 'unlike' : (targetTab === 'like' ? 'uncollect' : '');
+    if (oppositeMode && state.modeCache && state.modeCache[oppositeMode]) {
+      state.modeCache[oppositeMode].forEach(function (n) {
         if (n && n.id) tabTransitionStaleIds.add(n.id);
       });
     }
@@ -645,7 +653,7 @@
         return false;
       }
 
-      const allCards = scanCards();
+      const allCards = scanCards(actualTab);
       if (!allCards.length) {
         return false; // DOM 处于清空/加载中状态，暂不入库
       }
@@ -672,7 +680,7 @@
     if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
     const targetList = state.modeCache[targetMode];
 
-    const cards = scanCards();
+    const cards = scanCards(actualTab);
     if (!cards.length) return false;
 
     // 过滤掉前一个 Tab 残留在 DOM 里的旧卡片以及本人发布的笔记
@@ -742,33 +750,53 @@
     if (!el) return false;
     if (el.getAttribute && el.getAttribute('aria-selected') === 'true') return true;
     if (el.classList) {
-      if (el.classList.contains('reds-tab-item-active') || el.classList.contains('active') || el.classList.contains('selected') || el.classList.contains('is-active')) {
+      if (el.classList.contains('reds-tab-item-active') ||
+          el.classList.contains('active') ||
+          el.classList.contains('selected') ||
+          el.classList.contains('is-active')) {
         return true;
       }
     }
     if (ACTIVE_RE.test(el.className || '')) return true;
     if (el.querySelector) {
-      const childActive = el.querySelector('.active, .is-active, .selected, .current, [aria-selected="true"], [class*="active"], [class*="selected"]');
+      const childActive = el.querySelector('.active, .is-active, .selected, .current, [aria-selected="true"]');
       if (childActive) return true;
     }
-    try {
-      const fw = window.getComputedStyle(el).fontWeight;
-      if (parseInt(fw, 10) >= 600 || fw === 'bold') return true;
-    } catch (e) {}
     return false;
   }
 
   function mainTabs() {
+    // 1. 优先定位同时包含「收藏」与「点赞」的主 Tab 栏容器（绝不误入子 Tab）
+    const headers = $$('#userPageTabs, .user-tabs, .reds-tabs-header, .user-page-tabs, .user-page .reds-tabs, .reds-tabs');
+    for (let h = 0; h < headers.length; h++) {
+      const candidates = $$('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]', headers[h]);
+      let hasCollect = false;
+      let hasLike = false;
+      const validInHeader = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const d = detectTabFromText(candidates[i].textContent);
+        if (d === 'collect') hasCollect = true;
+        if (d === 'like') hasLike = true;
+        if (d === 'collect' || d === 'like' || d === 'notes') {
+          validInHeader.push(candidates[i]);
+        }
+      }
+      if (hasCollect && hasLike && validInHeader.length >= 2) {
+        return validInHeader;
+      }
+    }
+
+    // 2. 兜底：全页面扫描，严格排除子 Tab 容器
     const all = $$('#userPageTabs .reds-tab-item, .user-page .reds-tab-item, .reds-tabs-header .reds-tab-item, .reds-tab-item, [role="tab"], .tab-link');
     const matched = all.filter(function (el) {
-      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list')) return false;
+      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, .sub-tab-list, .sub-tabs, [class*="sub-tab"]')) return false;
       const detected = detectTabFromText(el.textContent);
       return detected === 'like' || detected === 'collect' || detected === 'notes';
     });
     const uniq = [];
     matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
     if (uniq.length >= 2) return uniq;
-    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container'); });
+    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container, .sub-tab-list, [class*="sub-tab"]'); });
   }
 
   function getTabFromUrl() {
@@ -826,9 +854,53 @@
 
   function activeTabEl() {
     const tabs = mainTabs();
+    if (!tabs || !tabs.length) return null;
+
+    // 阶段 1：首选显式激活标记（aria-selected 或 active class）
     for (let i = 0; i < tabs.length; i++) {
       if (isTabItemActive(tabs[i])) return tabs[i];
     }
+
+    // 阶段 2：检查是否有红色指示条（.reds-tab-ink-bar / active indicator）对齐
+    for (let i = 0; i < tabs.length; i++) {
+      const el = tabs[i];
+      const parent = el.parentElement;
+      if (parent) {
+        const bar = parent.querySelector('.reds-tab-ink-bar, .ink-bar, .indicator, .active-bar');
+        if (bar) {
+          try {
+            const barRect = bar.getBoundingClientRect();
+            const tabRect = el.getBoundingClientRect();
+            const barCenter = barRect.left + barRect.width / 2;
+            if (barCenter >= tabRect.left && barCenter <= tabRect.right) {
+              return el;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 阶段 3：字体粗细横向对比（只有独占最高字重且比其他所有 Tab 都更粗时才采纳）
+    let maxFw = 0;
+    let heaviestEl = null;
+    let maxCount = 0;
+    for (let i = 0; i < tabs.length; i++) {
+      try {
+        const fwStr = window.getComputedStyle(tabs[i]).fontWeight;
+        const fw = parseInt(fwStr, 10) || (fwStr === 'bold' ? 700 : 400);
+        if (fw > maxFw) {
+          maxFw = fw;
+          heaviestEl = tabs[i];
+          maxCount = 1;
+        } else if (fw === maxFw) {
+          maxCount++;
+        }
+      } catch (e) {}
+    }
+    if (maxCount === 1 && maxFw >= 600 && heaviestEl) {
+      return heaviestEl;
+    }
+
     return null;
   }
 
@@ -874,7 +946,7 @@
         await sleep(150);
         continue;
       }
-      const cards = scanCards();
+      const cards = scanCards(curTab);
       if (cards.length > 0) {
         const allStale = cards.every(function (c) {
           return tabTransitionStaleIds && tabTransitionStaleIds.has(c.id);
