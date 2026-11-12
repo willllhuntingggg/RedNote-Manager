@@ -394,6 +394,7 @@ test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取�
       return {
         className: 'rn-stack-action-btn rn-btn-unlike',
         text: (st.processed || !st.active) ? '已取消点赞' : '取消点赞',
+        html: (st.processed || !st.active) ? '<span>已取消点赞</span>' : '<span>取消点赞</span><kbd class="rn-stack-kbd">Space</kbd>',
         disabled: st.processed || !st.active,
         statusPill: (st.processed || !st.active) ? '已取消点赞' : '已点赞 ❤️',
       };
@@ -401,6 +402,7 @@ test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取�
       return {
         className: 'rn-stack-action-btn rn-btn-uncollect',
         text: (st.processed || !st.active) ? '已取消收藏' : '取消收藏',
+        html: (st.processed || !st.active) ? '<span>已取消收藏</span>' : '<span>取消收藏</span><kbd class="rn-stack-kbd">Space</kbd>',
         disabled: st.processed || !st.active,
         statusPill: (st.processed || !st.active) ? '已取消收藏' : '已收藏 ⭐',
       };
@@ -417,6 +419,7 @@ test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取�
   let btnFav = renderActionButton(stFav, 'uncollect');
   assert.strictEqual(btnFav.className, 'rn-stack-action-btn rn-btn-uncollect');
   assert.strictEqual(btnFav.text, '取消收藏');
+  assert.strictEqual(btnFav.html.includes('<kbd class="rn-stack-kbd">Space</kbd>'), true, '按钮内部直观标出快捷键 Space');
   assert.strictEqual(btnFav.statusPill, '已收藏 ⭐');
   assert.strictEqual(btnFav.disabled, false);
 
@@ -442,6 +445,7 @@ test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取�
   let btnLike = renderActionButton(stLike, 'unlike');
   assert.strictEqual(btnLike.className, 'rn-stack-action-btn rn-btn-unlike');
   assert.strictEqual(btnLike.text, '取消点赞');
+  assert.strictEqual(btnLike.html.includes('<kbd class="rn-stack-kbd">Space</kbd>'), true, '按钮内部直观标出快捷键 Space');
   assert.strictEqual(btnLike.statusPill, '已点赞 ❤️');
   assert.strictEqual(btnLike.disabled, false);
 
@@ -456,11 +460,15 @@ test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取�
   assert.strictEqual(btnLike.statusPill, '已取消点赞');
   assert.strictEqual(btnLike.disabled, true);
 
-  // 3. 验证快捷键映射行为：空格、回车、方向键下均映射到当前模式的操作执行
+  // 3. 验证快捷键映射行为：空格、回车、方向键下均映射到当前模式的操作执行，Z 键撤销
   const actionDispatched = [];
   function handleKeyDown(key, currentMode) {
     if (key === ' ' || key === 'Enter' || key === 'ArrowDown') {
       actionDispatched.push(currentMode);
+      return true;
+    }
+    if (key === 'z' || key === 'Z') {
+      actionDispatched.push('undo_' + currentMode);
       return true;
     }
     return false;
@@ -468,7 +476,8 @@ test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取�
   assert.strictEqual(handleKeyDown(' ', 'uncollect'), true);
   assert.strictEqual(handleKeyDown('Enter', 'uncollect'), true);
   assert.strictEqual(handleKeyDown('ArrowDown', 'unlike'), true);
-  assert.deepStrictEqual(actionDispatched, ['uncollect', 'uncollect', 'unlike']);
+  assert.strictEqual(handleKeyDown('z', 'uncollect'), true);
+  assert.deepStrictEqual(actionDispatched, ['uncollect', 'uncollect', 'unlike', 'undo_uncollect']);
 });
 
 test('侧边栏模式切换 Tab：精简文案为「收藏」与「点赞」并保留计数角标', () => {
@@ -832,6 +841,20 @@ test('Tab 识别机制：DOM 激活态绝对优先判定真实展示内容，URL
     'notes',
     'DOM 尚未就绪时，在 ?tab=note 下精准识别为 notes（发布笔记）'
   );
+
+  function detectTabFromText(text) {
+    const clean = String(text || '').replace(/\s+/g, '');
+    if (/(?:赞过|点赞|喜欢)/.test(clean)) return 'like';
+    if (/(?:收藏|合集)/.test(clean)) return 'collect';
+    if (/(?:笔记|发布|原创|图文|视频)/.test(clean)) return 'notes';
+    return '';
+  }
+
+  assert.strictEqual(detectTabFromText('收藏(520)'), 'collect', '带括号计数的收藏准确识别');
+  assert.strictEqual(detectTabFromText('我的收藏'), 'collect', '带前缀的我的收藏准确识别');
+  assert.strictEqual(detectTabFromText('赞过(300)'), 'like', '带括号计数的赞过准确识别');
+  assert.strictEqual(detectTabFromText('我的点赞'), 'like', '带前缀的点赞准确识别');
+  assert.strictEqual(detectTabFromText('原创笔记 15'), 'notes', '原创发布笔记准确识别');
 });
 
 test('侧边栏候选列表支持动态展开与针对性提示文案（解决无搜索词时误提示缩小搜索词的问题）', () => {

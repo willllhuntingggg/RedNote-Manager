@@ -763,6 +763,37 @@ globalThis.RNStyle = `
     box-shadow: 0 6px 20px rgba(255, 46, 77, 0.4) !important;
   }
 
+  /* 叠卡模式内按键提示小徽章 */
+  .rn-stack-kbd {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-family: inherit !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    padding: 3px 6px !important;
+    border-radius: 5px !important;
+    background: rgba(255, 255, 255, 0.16) !important;
+    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+    color: inherit !important;
+    margin-left: 6px !important;
+    letter-spacing: 0.5px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+  }
+  .rn-stack-nav-kbd {
+    display: inline-block !important;
+    font-family: inherit !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    opacity: 0.7 !important;
+    padding: 1px 4px !important;
+    border-radius: 3px !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    margin-left: 4px !important;
+  }
+
   .rn-stack-icon-btn {
     all: unset !important;
     cursor: pointer !important;

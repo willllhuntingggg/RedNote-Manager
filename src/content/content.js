@@ -605,10 +605,10 @@
   const OWN_NOTE_TAB_KEYWORDS = ['笔记', '发布', '原创', '视频', '图文'];
 
   function detectTabFromText(text) {
-    const clean = String(text || '').replace(/\s+/g, '').replace(/\d+/g, '');
-    if (/^(?:赞过|点赞|喜欢)/.test(clean) || clean.includes('赞过') || clean.includes('点赞')) return 'like';
-    if (/^收藏/.test(clean) || clean.includes('收藏')) return 'collect';
-    if (/^笔记/.test(clean) || clean.includes('笔记')) return 'notes';
+    const clean = String(text || '').replace(/\s+/g, '');
+    if (/(?:赞过|点赞|喜欢)/.test(clean)) return 'like';
+    if (/(?:收藏|合集)/.test(clean)) return 'collect';
+    if (/(?:笔记|发布|原创|图文|视频)/.test(clean)) return 'notes';
     return '';
   }
 
@@ -622,25 +622,33 @@
     if (!el) return false;
     if (el.getAttribute && el.getAttribute('aria-selected') === 'true') return true;
     if (el.classList) {
-      if (el.classList.contains('reds-tab-item-active') || el.classList.contains('active') || el.classList.contains('selected')) {
+      if (el.classList.contains('reds-tab-item-active') || el.classList.contains('active') || el.classList.contains('selected') || el.classList.contains('is-active')) {
         return true;
       }
     }
     if (ACTIVE_RE.test(el.className || '')) return true;
+    if (el.querySelector) {
+      const childActive = el.querySelector('.active, .is-active, .selected, .current, [aria-selected="true"], [class*="active"], [class*="selected"]');
+      if (childActive) return true;
+    }
+    try {
+      const fw = window.getComputedStyle(el).fontWeight;
+      if (parseInt(fw, 10) >= 600 || fw === 'bold') return true;
+    } catch (e) {}
     return false;
   }
 
   function mainTabs() {
-    const all = $$('.reds-tab-item, [role="tab"], .user-page [class*="tab-item"], .tab-link');
+    const all = $$('#userPageTabs .reds-tab-item, .user-page .reds-tab-item, .reds-tabs-header .reds-tab-item, .reds-tab-item, [role="tab"], .tab-link');
     const matched = all.filter(function (el) {
       if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list')) return false;
-      const t = (el.textContent || '').trim();
-      return /^(?:笔记|收藏|点赞|赞过|喜欢)(?:\s*\d+)?$/.test(t);
+      const detected = detectTabFromText(el.textContent);
+      return detected === 'like' || detected === 'collect' || detected === 'notes';
     });
     const uniq = [];
     matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
     if (uniq.length >= 2) return uniq;
-    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item'); });
+    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container'); });
   }
 
   function getTabFromUrl() {
@@ -737,31 +745,50 @@
     return el ? ((el.textContent || '').replace(/\s+/g, '').replace(/\d+/g, '')) : '';
   }
 
-  /** 切完标签后卡片是异步渲染的，等它出现再扫，否则会稳定读到 0 篇 */
+  /** 切完标签后卡片是异步渲染的，必须等到新 Tab 的非旧卡片出现再算就绪 */
   async function waitForCards(timeoutMs) {
     const end = nowMs() + (timeoutMs || 6000);
     while (nowMs() < end) {
-      if (scanCards().length > 0) return true;
-      await sleep(300);
+      const cards = scanCards();
+      const hasFresh = cards.some(function (c) {
+        return !staleCardsFromPreviousTab || !staleCardsFromPreviousTab.has(c.id);
+      });
+      if (hasFresh) return true;
+      await sleep(250);
     }
     return false;
   }
 
   async function ensureTab(want) {
     const cur = activeTabEl();
-    if (cur && tabMatches(cur, want)) return;
+    if (cur && tabMatches(cur, want)) return true;
 
     const target = mainTabs().filter(function (el) { return tabMatches(el, want); })[0];
-    if (!target) return;
-    try { target.click(); } catch (e) {}
+    if (!target) return false;
 
-    const deadline = nowMs() + 3500;
+    // 记录切换前页面的旧卡片黑名单，避免异步渲染过渡期旧卡片被误收入新模式
+    staleCardsFromPreviousTab = new Set(pageCardIds());
+    tabSwitchTimestamp = Date.now();
+
+    // 触发点击切换（支持原生与事件冒泡分发）
+    try {
+      target.click();
+      const clickEl = target.querySelector('span, a') || target;
+      clickEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    } catch (e) {}
+
+    const deadline = nowMs() + 4500;
     while (nowMs() < deadline) {
-      await sleep(250);
+      await sleep(200);
       const a = activeTabEl();
-      if (a && tabMatches(a, want)) { await sleep(400); return; }
+      if (a && tabMatches(a, want)) {
+        await sleep(350);
+        return true;
+      }
     }
-    await sleep(400);
+    await sleep(300);
+    const finalA = activeTabEl();
+    return !!(finalA && tabMatches(finalA, want));
   }
 
   /* ============================ DOM：滚动加载 ============================ */
@@ -803,6 +830,21 @@
   async function collectCandidates() {
     const m = state.settings.mode;
     const M = C.MODES[m];
+    const expectedTab = (m === 'unlike') ? 'like' : 'collect';
+
+    // 严密防串仓：若当前页面实际展示的 Tab 与模式不匹配，必须先切换并等待真实卡片就绪
+    let curTab = getPageActualTabType();
+    if (curTab && curTab !== expectedTab) {
+      log('当前在「' + (curTab === 'like' ? '点赞' : (curTab === 'collect' ? '收藏' : '我的笔记')) + '」，正在切换至「' + M.tabLabel + '」…', 'info');
+      await ensureTab(M.tabLabel);
+      await waitForCards(6000);
+      curTab = getPageActualTabType();
+    }
+    if (curTab && curTab !== expectedTab) {
+      log('页面当前未能进入「' + M.tabLabel + '」列表，已终止读取以彻底杜绝串仓', 'err');
+      return (state.modeCache && state.modeCache[m]) || [];
+    }
+
     const isAutoScroll = state.settings.autoScroll !== false;
     // 当开启「滚动加载全部」时，不再人为截断在 maxPerRun * 3 (如90条)，支持深度加载至 3000 条或页面末尾；
     // 仅在明确关闭滚动时才退守至当前单批上限
@@ -818,6 +860,11 @@
     });
 
     const merge = function () {
+      const activeTabNow = getPageActualTabType();
+      if (activeTabNow && activeTabNow !== expectedTab) {
+        // 过渡期或 Tab 错位时严格拒绝入库！
+        return 0;
+      }
       let added = 0;
       scanCards().forEach(function (n) {
         if (!acc.has(n.id)) {
@@ -1325,6 +1372,11 @@
           executeStackAction(state.settings.mode);
           return;
         }
+        if (ev.key === 'z' || ev.key === 'Z') {
+          ev.preventDefault();
+          undoRun({ undoType: 'single', mode: state.settings.mode });
+          return;
+        }
       }
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       const badge = ev.target && ev.target.closest ? ev.target.closest('.rn-pick') : null;
@@ -1527,18 +1579,8 @@
     // 2. 清洗可能残留的原创笔记
     state.candidates = state.candidates.filter(function (n) { return !isOwnNote(n); });
 
-    // 3. 在合规的「收藏」或「赞过」Tab 增量同步页面卡片
+    // 3. 在合规的「收藏」或「赞过」Tab 增量同步页面卡片（由 syncDomCardsToCandidates 保证严格按实际 Tab 归仓，绝不强行串仓兜底）
     syncDomCardsToCandidates();
-
-    // 4. 兜底扫描：若候选集仍为空且并未处于笔记Tab，扫描当前页面呈现的合法卡片
-    if (!state.candidates.length) {
-      const scanned = scanCards();
-      if (scanned && scanned.length) {
-        state.candidates = scanned;
-        refreshPageCards();
-        broadcastState();
-      }
-    }
 
     // 5. 更新过滤规则（与右侧侧边栏传入的搜索、tag与ids完全同步）
     if (opts) {
@@ -1854,16 +1896,16 @@
     if (stackState.randomMode) {
       stackState.els.btnPrev.disabled = (!stackState.history || stackState.history.length === 0) && idx <= 0;
       stackState.els.btnNext.disabled = total <= 1;
-      stackState.els.btnNext.innerHTML = '随机下一个 <span>🎲</span>';
+      stackState.els.btnNext.innerHTML = '随机下一个 <span>🎲</span> <kbd class="rn-stack-nav-kbd">→</kbd>';
       stackState.els.btnNext.title = '随机下一张 (→)';
     } else {
       stackState.els.btnPrev.disabled = idx <= 0;
       stackState.els.btnNext.disabled = idx >= total - 1;
-      stackState.els.btnNext.innerHTML = '下一个 <span>➡</span>';
+      stackState.els.btnNext.innerHTML = '下一个 <span>➡</span> <kbd class="rn-stack-nav-kbd">→</kbd>';
       stackState.els.btnNext.title = '下一张 (→)';
     }
 
-    // 更新单动作专属操作按钮（取消点赞 / 取消收藏）
+    // 更新单动作专属操作按钮（取消点赞 / 取消收藏），明确在按钮上直观展示快捷键 Space
     const actionBtn = stackState.els.btnAction || stackState.els.btnCollect || stackState.els.btnLike;
     if (actionBtn) {
       actionBtn.disabled = stackState.working || st.processed || !st.active;
@@ -1873,8 +1915,8 @@
           actionBtn.innerHTML = SVG_HEART_OUTLINE + '<span>已取消点赞</span>';
           actionBtn.title = '该笔记已取消点赞';
         } else {
-          actionBtn.innerHTML = SVG_HEART_FILLED + '<span>取消点赞</span>';
-          actionBtn.title = '取消点赞 (快捷键: 空格 / 回车 / ↓)';
+          actionBtn.innerHTML = SVG_HEART_FILLED + '<span>取消点赞</span><kbd class="rn-stack-kbd">Space</kbd>';
+          actionBtn.title = '取消点赞 (快捷键: 空格 Space / 回车 Enter / 方向键下 ↓)';
         }
       } else {
         actionBtn.className = 'rn-stack-action-btn rn-btn-uncollect';
@@ -1882,8 +1924,8 @@
           actionBtn.innerHTML = SVG_STAR_OUTLINE + '<span>已取消收藏</span>';
           actionBtn.title = '该笔记已取消收藏';
         } else {
-          actionBtn.innerHTML = SVG_STAR_FILLED + '<span>取消收藏</span>';
-          actionBtn.title = '取消收藏 (快捷键: 空格 / 回车 / ↓)';
+          actionBtn.innerHTML = SVG_STAR_FILLED + '<span>取消收藏</span><kbd class="rn-stack-kbd">Space</kbd>';
+          actionBtn.title = '取消收藏 (快捷键: 空格 Space / 回车 Enter / 方向键下 ↓)';
         }
       }
     }
@@ -2737,8 +2779,8 @@
       '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
       '    </div>',
       '    <div class="rn-stack-header-actions">',
-      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才划走/取消的笔记" disabled>↩️ 撤销刚才</button>',
-      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
+      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: Z)" disabled>↩️ 撤销刚才 <kbd class="rn-stack-nav-kbd">Z</kbd></button>',
+      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">× <kbd class="rn-stack-nav-kbd">Esc</kbd></button>',
       '    </div>',
       '  </div>',
       '  <div class="rn-stack-auto-row">',
@@ -2778,13 +2820,13 @@
       '  </div>',
       '  <div class="rn-stack-actions">',
       '    <button class="rn-action-nav-btn" id="rn-stack-prev" type="button" title="上一张 (←)">',
-      '      <span>⬅</span> 上一个',
+      '      <span>⬅</span> 上一个 <kbd class="rn-stack-nav-kbd">←</kbd>',
       '    </button>',
       '    <div class="rn-action-exec-btns">',
       '      <button class="rn-stack-action-btn" id="rn-stack-action" type="button" aria-label="执行操作" title="取消操作 (快捷键: 空格 / 回车 / ↓)"></button>',
       '    </div>',
       '    <button class="rn-action-nav-btn" id="rn-stack-next" type="button" title="下一张 (→)">',
-      '      下一个 <span>➡</span>',
+      '      下一个 <span>➡</span> <kbd class="rn-stack-nav-kbd">→</kbd>',
       '    </button>',
       '  </div>',
       '</div>',
