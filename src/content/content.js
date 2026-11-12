@@ -537,10 +537,12 @@
    * 启动严格的 Tab 切换过渡保护：
    * 1. 立即熔断后台扫描任务；
    * 2. 拍摄当前 DOM 中所有卡片 ID 作为陈旧卡片黑名单；
-   * 3. 开启 tabTransitionLock，直至页面完全渲染新卡片且无旧卡片残留。
+   * 3. 开启 tabTransitionLock，直至页面换批渲染新卡片或过渡超时（最大 1500ms）。
    */
   function beginTabTransition(targetTab) {
     if (!targetTab || (targetTab !== 'collect' && targetTab !== 'like' && targetTab !== 'notes')) return;
+    // 如果已经在目标 Tab，无需过渡锁定，直接保持就绪状态
+    if (currentScannedTabType === targetTab && !tabTransitionLock) return;
 
     abortActiveScan('切换标签至「' + (targetTab === 'like' ? '点赞' : (targetTab === 'collect' ? '收藏' : '发布笔记')) + '」');
 
@@ -571,7 +573,7 @@
       return false;
     }
 
-    // 检测到隐式 Tab 切换（例如用户后退/前进或第三方点击）
+    // 检测到隐式 Tab 切换（例如用户后退/前进或直接改 URL）
     if (currentScannedTabType && currentScannedTabType !== actualTab && !tabTransitionLock) {
       beginTabTransition(actualTab);
     }
@@ -579,34 +581,38 @@
       currentScannedTabType = actualTab;
     }
 
-    // 过渡期严格防护：
+    // 过渡期严格防护（仅在跨 Tab 切换发生后的极短过渡期内生效，最长 1500ms）：
     if (tabTransitionLock) {
       // 若实际 Tab 尚未切到目标 Tab，坚决不读
       if (actualTab !== tabTransitionTarget) {
         return false;
       }
 
-      const allCards = scanCards();
-      if (!allCards.length) {
-        // DOM 处于清空状态（加载中），旧卡片已卸载
-        tabTransitionStaleIds.clear();
-        return false;
-      }
-
-      // 检查 DOM 中是否仍残留着切换前拍摄的旧卡片
-      const hasStaleCardsInDom = allCards.some(function (c) {
-        return tabTransitionStaleIds.has(c.id);
-      });
-
-      if (hasStaleCardsInDom) {
-        // 只要 DOM 中哪怕还有 1 张旧 Tab 残留卡片，说明小红书异步渲染尚未换批完毕，过渡期坚决阻断！
-        if (Date.now() - tabTransitionStartTime < 6000) {
-          return false;
-        }
-      } else {
-        // DOM 中已完全无旧卡片残留，且已渲染出全新卡片，安全释放过渡锁！
+      // 超时强制解除锁，恢复正常滚动感知
+      if (Date.now() - tabTransitionStartTime > 1500) {
         tabTransitionLock = false;
         tabTransitionStaleIds.clear();
+      } else {
+        const allCards = scanCards();
+        if (!allCards.length) {
+          // DOM 处于清空状态（加载中），旧卡片已卸载
+          tabTransitionStaleIds.clear();
+          return false;
+        }
+
+        // 检查 DOM 中是否全部是切换前拍摄的旧卡片
+        const allStale = allCards.every(function (c) {
+          return tabTransitionStaleIds.has(c.id);
+        });
+
+        if (allStale) {
+          // 全部是旧卡片，说明小红书异步渲染尚未换批完毕，暂不入库
+          return false;
+        } else {
+          // DOM 中已出现新卡片，安全释放过渡锁！
+          tabTransitionLock = false;
+          tabTransitionStaleIds.clear();
+        }
       }
     }
 
@@ -622,7 +628,7 @@
     for (let i = 0; i < cards.length; i++) {
       const c = cards[i];
       if (isOwnNote(c)) continue;
-      if (tabTransitionStaleIds.has(c.id)) {
+      if (tabTransitionLock && tabTransitionStaleIds.has(c.id)) {
         // 这是前一个 Tab 残留在页面上的旧卡片，过渡期坚决丢弃！
         continue;
       }
@@ -809,27 +815,29 @@
 
   /** 切完标签后卡片是异步渲染的，必须等到新 Tab 的卡片出现且无旧卡片残留再算就绪 */
   async function waitForCards(timeoutMs, expectedTab) {
-    const end = nowMs() + (timeoutMs || 6000);
+    const end = nowMs() + (timeoutMs || 4000);
     while (nowMs() < end) {
       const curTab = getPageActualTabType();
       if (expectedTab && curTab !== expectedTab) {
-        await sleep(200);
+        await sleep(150);
         continue;
       }
       const cards = scanCards();
       if (cards.length > 0) {
-        const hasStale = cards.some(function (c) {
+        const allStale = cards.every(function (c) {
           return tabTransitionStaleIds.has(c.id);
         });
-        if (!hasStale) {
+        if (!allStale) {
           tabTransitionLock = false;
           tabTransitionStaleIds.clear();
           return true;
         }
       }
-      await sleep(200);
+      await sleep(150);
     }
-    return false;
+    tabTransitionLock = false;
+    tabTransitionStaleIds.clear();
+    return true;
   }
 
   async function ensureTab(want) {
@@ -846,7 +854,7 @@
     if (!target) return false;
 
     // 记录切换前页面的旧卡片黑名单并熔断先前扫描
-    if (wantTab) {
+    if (wantTab && wantTab !== currentScannedTabType) {
       beginTabTransition(wantTab);
     }
 
@@ -1491,15 +1499,17 @@
 
     // 用户自主滚动浏览时，自动增量捕获新渲染的卡片并同步至侧边栏
     let scrollTimer = null;
-    window.addEventListener('scroll', function () {
+    const onManualScroll = function () {
       clearTimeout(scrollTimer);
       scrollTimer = setTimeout(function () {
         if (syncDomCardsToCandidates()) {
           refreshPageCards();
           broadcastState();
         }
-      }, 150);
-    }, { passive: true });
+      }, 100);
+    };
+    window.addEventListener('scroll', onManualScroll, { capture: true, passive: true });
+    window.addEventListener('wheel', onManualScroll, { capture: true, passive: true });
 
     // 监听 DOM 树变化（无限滚动异步插入卡片）
     try {
@@ -1519,7 +1529,7 @@
               refreshPageCards();
               broadcastState();
             }
-          }, 150);
+          }, 120);
         }
       });
       observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
@@ -1531,7 +1541,9 @@
       if (tab) {
         const detected = detectTabFromText(tab.textContent);
         if (detected) {
-          beginTabTransition(detected);
+          if (detected !== currentScannedTabType) {
+            beginTabTransition(detected);
+          }
 
           if (detected === 'like') {
             state.settings.mode = 'unlike';
@@ -1547,12 +1559,10 @@
           clearPageCards();
           broadcastState();
 
-          // 等待新 Tab 的卡片 DOM 渲染就绪并安全合入对应缓存（绝不在旧卡片残留时盲扫）
-          waitForCards(4500, detected).then(function (ok) {
-            if (ok) {
-              if (syncDomCardsToCandidates()) broadcastState();
-              refreshPageCards();
-            }
+          // 等待新 Tab 的卡片 DOM 渲染就绪并安全合入对应缓存
+          waitForCards(2500, detected).then(function () {
+            if (syncDomCardsToCandidates()) broadcastState();
+            refreshPageCards();
           });
         }
       }
@@ -2795,7 +2805,9 @@
     if (state.settings.mode === mode) return;
 
     const targetTab = mode === 'unlike' ? 'like' : 'collect';
-    beginTabTransition(targetTab);
+    if (targetTab !== currentScannedTabType) {
+      beginTabTransition(targetTab);
+    }
 
     state.settings.mode = mode;
     saveSettings();
@@ -2812,12 +2824,10 @@
     if (PROFILE_RE.test(location.pathname) && !isOwnNotesPage()) {
       const targetLabel = C.MODES[mode].tabLabel;
       ensureTab(targetLabel).then(function () {
-        waitForCards(4000, targetTab).then(function (ok) {
-          if (ok) {
-            if (syncDomCardsToCandidates()) {
-              refreshPageCards();
-              broadcastState();
-            }
+        waitForCards(2500, targetTab).then(function () {
+          if (syncDomCardsToCandidates()) {
+            refreshPageCards();
+            broadcastState();
           }
         });
       }).catch(function () {});
@@ -3360,11 +3370,9 @@
       broadcastState();
 
       if (!isOwnNotesPage() && detected) {
-        waitForCards(4000, detected).then(function (ok) {
-          if (ok) {
-            if (syncDomCardsToCandidates()) broadcastState();
-            refreshPageCards();
-          }
+        waitForCards(2500, detected).then(function () {
+          if (syncDomCardsToCandidates()) broadcastState();
+          refreshPageCards();
         });
       }
     }

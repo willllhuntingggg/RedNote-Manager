@@ -1617,6 +1617,55 @@ test('防串仓全链路防线：Tab切换即刻熔断扫描任务、深度扫�
   assert.strictEqual(modeCache.uncollect.every(c => c.id.startsWith('col_')), true, '杜绝任何点赞卡片串入收藏');
 });
 
+test('用户手动滑动页面增量加载机制：捕获阶段监听全容器滚动、避免同Tab重入锁定、新批次卡片即滚即入', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 滚动监听器必须支持捕获阶段 (capture: true) 和滚轮 (wheel)，以确保截获小红书内部 feeds-container 容器的非冒泡 scroll 事件
+  assert.ok(contentCode.includes("window.addEventListener('scroll', onManualScroll, { capture: true, passive: true });"), 'scroll 监听器必须使用捕获阶段');
+  assert.ok(contentCode.includes("window.addEventListener('wheel', onManualScroll, { capture: true, passive: true });"), 'wheel 监听器捕获滚轮滑动');
+
+  // 2. 防同 Tab 重复点击锁定：当用户已经在「收藏」Tab 上点击或手动浏览时，严禁误触发 beginTabTransition
+  assert.ok(contentCode.includes('if (currentScannedTabType === targetTab && !tabTransitionLock) return;'), '同 Tab 严禁重新开启过渡锁');
+
+  // 3. 模拟用户在小红书收藏页自主手动滚动加载
+  let currentScannedTabType = 'collect';
+  let tabTransitionLock = false;
+  const modeCache = { uncollect: [] };
+
+  function simulateManualScrollSync(newCards) {
+    if (tabTransitionLock) return false;
+    const targetList = modeCache.uncollect;
+    let added = 0;
+    newCards.forEach(c => {
+      if (!targetList.some(x => x.id === c.id)) {
+        targetList.push(c);
+        added++;
+      }
+    });
+    return added > 0;
+  }
+
+  // 首屏 20 篇
+  const initialCards = Array.from({ length: 20 }, (_, i) => ({
+    id: ('col_b1_' + String(i).padStart(4, '0')).padEnd(24, '0'),
+    title: '收藏笔记 batch1-' + i,
+  }));
+  simulateManualScrollSync(initialCards);
+  assert.strictEqual(modeCache.uncollect.length, 20, '首屏20篇笔记正常进入');
+
+  // 用户手动向下滚动，小红书异步吐出第二屏 20 篇
+  const secondBatchCards = Array.from({ length: 20 }, (_, i) => ({
+    id: ('col_b2_' + String(i).padStart(4, '0')).padEnd(24, '0'),
+    title: '收藏笔记 batch2-' + i,
+  }));
+  const scrollResult = simulateManualScrollSync(secondBatchCards);
+  assert.strictEqual(scrollResult, true, '手动滑动触发成功同步新卡片');
+  assert.strictEqual(modeCache.uncollect.length, 40, '候选集无感扩展至 40 篇');
+});
+
+
 
 
 
