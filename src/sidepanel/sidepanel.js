@@ -206,16 +206,10 @@ function renderDisconnected(message) {
   alert.hidden = false;
 }
 
-function applyState(st) {
-  if (!st) return;
-  lastState = st;
-
-  const s = st.settings || {};
-  const isRunning = !!st.running;
-
-  // 顶部提示
+function applyAlert(st) {
   const alert = $('rn-alert');
-  if (!st.onProfile) {
+  if (!alert) return;
+  if (!st || !st.onProfile) {
     alert.innerHTML = '提示：当前不在你的个人主页。请进入「我的主页 → 收藏 / 赞过」后再操作。';
     alert.hidden = false;
   } else if (st.risk) {
@@ -227,6 +221,36 @@ function applyState(st) {
   } else {
     alert.hidden = true;
   }
+}
+
+let tabHintTimer = null;
+function showTabFollowHint(targetMode) {
+  const alert = $('rn-alert');
+  if (!alert) return;
+  if (tabHintTimer) clearTimeout(tabHintTimer);
+  const targetLabel = targetMode === 'unlike' ? '赞过' : '收藏';
+  alert.innerHTML = '💡 侧边栏已锁定跟随小红书页面。请在左侧点击「' + targetLabel + '」标签进行切换';
+  alert.hidden = false;
+  alert.style.borderColor = 'rgba(255, 46, 77, 0.6)';
+  tabHintTimer = setTimeout(function () {
+    alert.style.borderColor = '';
+    if (lastState) {
+      applyAlert(lastState);
+    } else {
+      alert.hidden = true;
+    }
+  }, 3500);
+}
+
+function applyState(st) {
+  if (!st) return;
+  lastState = st;
+
+  const s = st.settings || {};
+  const isRunning = !!st.running;
+
+  // 顶部提示
+  applyAlert(st);
 
   // 模式 Tab
   const counts = st.cacheCounts || {};
@@ -634,28 +658,19 @@ function closeSponsorModal() {
 /* ============================ 事件绑定 ============================ */
 
 function bindEvents() {
-  // 模式切换
+  // 模式 Tab：跟随左侧小红书页面，点击非激活 Tab 时提示用户在页面端切换
   $$('.rn-tab').forEach(function (btn) {
-    btn.addEventListener('click', async function () {
+    btn.addEventListener('click', function () {
       const mode = btn.dataset.mode;
       if (!mode) return;
-      listRenderLimit = 200;
-      // 立即乐观切换选中视觉，交互零延迟
-      $$('.rn-tab').forEach(function (b) {
-        b.classList.toggle('rn-on', b === btn);
-      });
-      const query = $('rn-q') ? $('rn-q').value.trim() : '';
-      const res = await sendToTab('RN_SET_MODE', {
-        mode: mode,
-        keyword: query,
-        tag: activeTagFilter,
-      });
-      if (res && res.state) {
-        applyState(res.state);
-      } else {
-        requestState();
+      if (lastState && lastState.mode === mode) {
+        // 已处于当前模式，平滑滚动至候选列表顶部
+        const list = $('rn-list');
+        if (list) list.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
       }
-      syncCurrentFilterToStack();
+      // 提示用户在左侧小红书页面切换
+      showTabFollowHint(mode);
     });
   });
 

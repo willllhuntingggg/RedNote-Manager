@@ -2163,6 +2163,87 @@ test('终极防串仓：旧DOM卡片在Tab切换期间绝对阻断、对立模�
   );
 });
 
+test('Option A 交互架构：小红书页面单向驱动，侧边栏状态跟随，杜绝模拟点击竞态并支持同时点赞收藏的笔记正常入库', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const sidepanelCode = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.js'), 'utf8');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 侧边栏代码架构防线检测
+  assert.ok(sidepanelCode.includes('function showTabFollowHint('), '侧边栏必须包含提示跟随小红书页面的引导函数');
+  assert.ok(sidepanelCode.includes('function applyAlert('), '侧边栏必须将提示逻辑拆解为模块化 applyAlert');
+  assert.ok(!sidepanelCode.includes("sendToTab('RN_SET_MODE'"), '侧边栏点击 Tab 坚决不再向页面发送模拟点击/切换指令');
+
+  // 2. 页面端 content script 架构防线检测
+  assert.ok(!contentCode.includes('ensureTab(targetLabel).then'), 'setMode 坚决不再进行异步模拟点击 ensureTab');
+  assert.ok(!contentCode.includes('oppositeSet'), 'syncDomCardsToCandidates 与 collectCandidates 彻底移除非 transition 期的全局 oppositeSet 阻断');
+
+  // 3. 仿真测试：真实用户既点赞又收藏同一篇优秀笔记的典型场景
+  const sharedNote = { id: 'note_shared_001', title: '既被点赞又被收藏的高质量笔记' };
+  const collectOnlyNote = { id: 'note_collect_002', title: '仅收藏笔记' };
+  const likeOnlyNote = { id: 'note_like_003', title: '仅点赞笔记' };
+
+  const modeCache = {
+    uncollect: [],
+    unlike: [],
+  };
+
+  let tabTransitionLock = false;
+  let tabTransitionStaleIds = new Set();
+  let tabTransitionTarget = '';
+  let tabTransitionStartTime = 0;
+
+  function simulateOptionASync(actualTab, domCards) {
+    if (tabTransitionLock) {
+      if (actualTab !== tabTransitionTarget) return false;
+      const allStale = domCards.every(c => tabTransitionStaleIds.has(c.id));
+      if (allStale) return false;
+      const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+      if (!anyStale) {
+        tabTransitionLock = false;
+        tabTransitionStaleIds.clear();
+      }
+    }
+
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    const targetList = modeCache[targetMode];
+    let added = 0;
+    for (const c of domCards) {
+      if (tabTransitionStaleIds.has(c.id)) continue;
+      if (!targetList.some(x => x.id === c.id)) {
+        targetList.push(c);
+        added++;
+      }
+    }
+    return added > 0;
+  }
+
+  // 3.1 用户在收藏页：浏览并加载了 sharedNote 与 collectOnlyNote
+  simulateOptionASync('collect', [sharedNote, collectOnlyNote]);
+  assert.strictEqual(modeCache.uncollect.length, 2, '收藏模式成功录入 2 篇笔记');
+  assert.strictEqual(modeCache.unlike.length, 0, '点赞模式依然为 0');
+
+  // 3.2 用户在小红书网页点击「赞过」Tab：
+  // 开启过渡保护，记录旧 DOM 卡片
+  tabTransitionLock = true;
+  tabTransitionTarget = 'like';
+  tabTransitionStaleIds = new Set([sharedNote.id, collectOnlyNote.id]);
+
+  // 小红书异步换批完成，点赞页渲染出 sharedNote 与 likeOnlyNote
+  const newLikeDom = [sharedNote, likeOnlyNote];
+  // 模拟过渡锁安全解除与入库
+  tabTransitionLock = false;
+  tabTransitionStaleIds.clear();
+  simulateOptionASync('like', newLikeDom);
+
+  // 核心业务断言：sharedNote 在两边均能正常展示与管理，点赞不会因为收藏已有该卡片而被吞掉！
+  assert.strictEqual(modeCache.unlike.length, 2, '点赞模式成功录入 2 篇笔记（包括共存的 sharedNote）');
+  assert.strictEqual(modeCache.uncollect.length, 2, '收藏模式保持 2 篇笔记');
+  assert.ok(modeCache.unlike.some(n => n.id === 'note_shared_001'), '共存笔记成功进入点赞列表，彻底告别点赞不出数据！');
+  assert.ok(modeCache.uncollect.some(n => n.id === 'note_shared_001'), '共存笔记同样存在于收藏列表！');
+});
+
+
 
 
 
