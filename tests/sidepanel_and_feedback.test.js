@@ -699,7 +699,7 @@ test('验证页面卡片入库严格取决于左侧小红书实际 Tab，与右�
   assert.deepStrictEqual(state.candidates.map((n) => n.title), ['我的收藏1', '我的收藏2', '我的收藏3']);
 });
 
-test('官方地址栏参数绝对优先权：在 ?tab=liked 下即使 DOM 存在其他误报 active 也绝对识别为 like，绝不污染 uncollect 缓存', () => {
+test('Tab 识别机制：DOM 激活态绝对优先判定真实展示内容，URL 参数作为有力兜底，彻底杜绝串仓', () => {
   function getTabFromUrl(searchStr) {
     const search = new URLSearchParams(searchStr);
     const tab = (search.get('tab') || '').toLowerCase();
@@ -709,49 +709,92 @@ test('官方地址栏参数绝对优先权：在 ?tab=liked 下即使 DOM 存在
     return '';
   }
 
-  // 模拟带有误导性 active 子项的 DOM Tab
-  const mockTabs = [
-    { text: '笔记 10', isSelfActive: false },
-    { text: '收藏 42', isSelfActive: false, hasActiveSubElement: true }, // 子项包含 active
-    { text: '赞过 105', isSelfActive: true },
-  ];
-
   function getPageActualTabType(searchStr, tabs) {
-    // 1. 优先从官方地址栏参数读取（100% 精准可靠）
+    // 1. 优先读取主 Tab 自身真实激活状态（用户眼见为实的 DOM 真实态）
+    if (Array.isArray(tabs) && tabs.length > 0) {
+      for (const t of tabs) {
+        if (t.isSelfActive) {
+          if (t.text.includes('赞过') || t.text.includes('点赞')) return 'like';
+          if (t.text.includes('收藏')) return 'collect';
+          if (t.text.includes('笔记')) return 'notes';
+        }
+      }
+    }
+
+    // 2. 兜底：若 DOM 尚未就绪，读取官方地址栏参数
     const urlTab = getTabFromUrl(searchStr);
     if (urlTab) return urlTab;
 
-    // 2. 兜底
-    for (const t of tabs) {
-      if (t.isSelfActive) {
-        if (t.text.includes('赞过')) return 'like';
-        if (t.text.includes('收藏')) return 'collect';
-        if (t.text.includes('笔记')) return 'notes';
-      }
-    }
     return '';
   }
 
-  // 场景：页面停留在点赞地址 ?tab=liked
+  // 场景 1：用户在小红书页面处于「赞过」Tab，但由于单页路由滞后，地址栏仍残留 ?tab=fav
+  const tabsOnLiked = [
+    { text: '笔记 10', isSelfActive: false },
+    { text: '收藏 42', isSelfActive: false },
+    { text: '赞过 105', isSelfActive: true },
+  ];
   assert.strictEqual(
-    getPageActualTabType('?tab=liked', mockTabs),
+    getPageActualTabType('?tab=fav&subTab=note', tabsOnLiked),
     'like',
-    '在 ?tab=liked 地址栏下，无论 DOM 如何，必须 100% 判定为 like（点赞）'
+    '当 DOM 明确激活「赞过」时，必须判定为 like，绝不因 URL 残留 ?tab=fav 导致点赞笔记串仓进收藏'
   );
 
-  // 场景：页面停留在收藏地址 ?tab=fav&subTab=note
+  // 场景 2：用户在小红书页面处于「收藏」Tab，但地址栏残留 ?tab=liked
+  const tabsOnCollect = [
+    { text: '笔记 10', isSelfActive: false },
+    { text: '收藏 42', isSelfActive: true },
+    { text: '赞过 105', isSelfActive: false },
+  ];
   assert.strictEqual(
-    getPageActualTabType('?tab=fav&subTab=note', mockTabs),
+    getPageActualTabType('?tab=liked', tabsOnCollect),
     'collect',
-    '在 ?tab=fav 地址栏下，必须 100% 判定为 collect（收藏）'
+    '当 DOM 明确激活「收藏」时，必须判定为 collect，绝不因 URL 残留 ?tab=liked 导致收藏笔记串仓进点赞'
   );
 
-  // 场景：页面停留在发布笔记地址 ?tab=note
+  // 场景 3：DOM 尚未渲染完成（tabs 为空），依赖地址栏参数兜底
   assert.strictEqual(
-    getPageActualTabType('?tab=note', mockTabs),
-    'notes',
-    '在 ?tab=note 地址栏下，必须 100% 判定为 notes（发布笔记）'
+    getPageActualTabType('?tab=liked', []),
+    'like',
+    'DOM 尚未就绪时，在 ?tab=liked 下精准识别为 like（点赞）'
   );
+
+  assert.strictEqual(
+    getPageActualTabType('?tab=fav&subTab=note', []),
+    'collect',
+    'DOM 尚未就绪时，在 ?tab=fav 下精准识别为 collect（收藏）'
+  );
+
+  assert.strictEqual(
+    getPageActualTabType('?tab=note', []),
+    'notes',
+    'DOM 尚未就绪时，在 ?tab=note 下精准识别为 notes（发布笔记）'
+  );
+});
+
+test('侧边栏候选列表支持动态展开与针对性提示文案（解决无搜索词时误提示缩小搜索词的问题）', () => {
+  function getFooterNotice(totalVis, limit, query, activeTag) {
+    const remaining = totalVis - limit;
+    if (remaining <= 0) return '';
+    const isFiltered = !!((query && query.trim()) || (activeTag && activeTag !== 'all'));
+    if (isFiltered) {
+      return '… 还有 ' + remaining + ' 篇匹配笔记未展示。可缩小搜索词，或：[加载更多 (+100)] [展示全部 (' + totalVis + ')]';
+    }
+    return '… 已展示前 ' + limit + ' 篇，还有 ' + remaining + ' 篇未展示：[加载更多 (+100)] [展示全部 (' + totalVis + ')]';
+  }
+
+  // 1. 无搜索词、无标签筛选时，绝不能出现“缩小搜索词”的误导文案
+  const normalNotice = getFooterNotice(250, 200, '', 'all');
+  assert.strictEqual(normalNotice.includes('缩小搜索词'), false, '无搜索词时严禁提示缩小搜索词');
+  assert.strictEqual(normalNotice.includes('已展示前 200 篇，还有 50 篇未展示'), true);
+  assert.strictEqual(normalNotice.includes('展示全部 (250)'), true);
+
+  // 2. 有搜索词时，提示可缩小搜索词或加载更多
+  const searchNotice = getFooterNotice(250, 200, '穿搭', 'all');
+  assert.strictEqual(searchNotice.includes('还有 50 篇匹配笔记未展示。可缩小搜索词'), true);
+
+  // 3. 点击加载更多或展示全部后，全部展示时无提示
+  assert.strictEqual(getFooterNotice(250, 300, '', 'all'), '');
 });
 
 test('防串仓机制：在 Tab 切换过渡期间（新 Tab 异步加载中），DOM 中的旧 Tab 卡片被严格阻断，绝对不写入新 Tab 缓存', () => {

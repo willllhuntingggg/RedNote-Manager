@@ -23,6 +23,7 @@ let activeTagFilter = 'all';
 let isAiAnalyzing = false;
 let showProcessedNotes = false;
 let sidepanelPort = null;
+let listRenderLimit = 200;
 
 function ensurePortConnection(tabId) {
   if (typeof tabId !== 'number') return;
@@ -459,7 +460,7 @@ function renderList(candidates, visible, st, query) {
       '</div>'
     : '';
 
-  const maxShow = 150;
+  const maxShow = listRenderLimit;
   const itemsHtml = visList.slice(0, maxShow).map(function (n) {
     const isDone = processedSet.has(n.id);
     const isSel = !isDone && selectedSet.has(n.id);
@@ -501,8 +502,28 @@ function renderList(candidates, visible, st, query) {
     );
   }).join('');
 
-  container.innerHTML = topNotice + itemsHtml +
-    (visList.length > maxShow ? '<div class="rn-empty">… 还有 ' + (visList.length - maxShow) + ' 篇未展示，缩小搜索词即可查看</div>' : '');
+  const remaining = visList.length - maxShow;
+  let footerHtml = '';
+  if (remaining > 0) {
+    const isFiltered = !!((query && query.trim()) || (activeTagFilter && activeTagFilter !== 'all'));
+    if (isFiltered) {
+      footerHtml = '<div class="rn-list-more-bar" style="padding:10px 12px; text-align:center; font-size:12px; color:var(--rn-text-dim, #94a3b8); background:rgba(255,255,255,0.04); border-radius:6px; margin:8px 0;">' +
+        '… 还有 ' + remaining + ' 篇匹配笔记未展示。可缩小搜索词，或：' +
+        '<div style="margin-top:6px; display:flex; gap:8px; justify-content:center;">' +
+        '<button class="rn-btn rn-mini" id="rn-btn-show-more" type="button">加载更多 (+100)</button>' +
+        '<button class="rn-btn rn-mini" id="rn-btn-show-all" type="button">展示全部 (' + visList.length + ')</button>' +
+        '</div></div>';
+    } else {
+      footerHtml = '<div class="rn-list-more-bar" style="padding:10px 12px; text-align:center; font-size:12px; color:var(--rn-text-dim, #94a3b8); background:rgba(255,255,255,0.04); border-radius:6px; margin:8px 0;">' +
+        '… 已展示前 ' + maxShow + ' 篇，还有 ' + remaining + ' 篇未展示：' +
+        '<div style="margin-top:6px; display:flex; gap:8px; justify-content:center;">' +
+        '<button class="rn-btn rn-mini" id="rn-btn-show-more" type="button">加载更多 (+100)</button>' +
+        '<button class="rn-btn rn-mini" id="rn-btn-show-all" type="button">展示全部 (' + visList.length + ')</button>' +
+        '</div></div>';
+    }
+  }
+
+  container.innerHTML = topNotice + itemsHtml + footerHtml;
 }
 
 function syncSettings(s) {
@@ -573,6 +594,7 @@ function bindEvents() {
     btn.addEventListener('click', async function () {
       const mode = btn.dataset.mode;
       if (!mode) return;
+      listRenderLimit = 200;
       // 立即乐观切换选中视觉，交互零延迟
       $$('.rn-tab').forEach(function (b) {
         b.classList.toggle('rn-on', b === btn);
@@ -918,6 +940,16 @@ function bindEvents() {
     if (ev.target && ev.target.id === 'rn-btn-quick-reset') {
       await sendToTab('RN_CLEAR_RECORDS');
       requestState();
+      return;
+    }
+    if (ev.target && ev.target.id === 'rn-btn-show-more') {
+      listRenderLimit += 100;
+      if (lastState) applyState(lastState);
+      return;
+    }
+    if (ev.target && ev.target.id === 'rn-btn-show-all') {
+      listRenderLimit = 999999;
+      if (lastState) applyState(lastState);
       return;
     }
     // 点击查看原文外链，优先使用 chrome.tabs.create 打开新标签页，并阻止冒泡到列表项勾选事件

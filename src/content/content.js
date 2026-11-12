@@ -541,12 +541,6 @@
     }
     currentScannedTabType = actualTab;
 
-    // 过渡黑名单保护仅在切换瞬间（1200ms 内）有效，超时自动释放，杜绝死锁导致后续数据永远为 0
-    const isTransitioning = staleCardsFromPreviousTab && (Date.now() - tabSwitchTimestamp < 1200);
-    if (!isTransitioning && staleCardsFromPreviousTab) {
-      staleCardsFromPreviousTab = null;
-    }
-
     const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
     if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
     const targetList = state.modeCache[targetMode];
@@ -560,7 +554,7 @@
     for (let i = 0; i < cards.length; i++) {
       const c = cards[i];
       if (isOwnNote(c)) continue;
-      if (isTransitioning && staleCardsFromPreviousTab.has(c.id)) {
+      if (staleCardsFromPreviousTab && staleCardsFromPreviousTab.has(c.id)) {
         // 这是前一个 Tab 残留在页面上的旧卡片，过渡期坚决丢弃！
         continue;
       }
@@ -568,7 +562,7 @@
       validCards.push(c);
     }
 
-    // 页面上已经渲染出了全新的当前 Tab 卡片，安全解除过渡黑名单保护
+    // 只有当页面上确实渲染出了全新的当前 Tab 卡片（存在非旧 Tab 残留卡片）时，才安全解除过渡黑名单保护
     if (hasFreshCard && staleCardsFromPreviousTab) {
       staleCardsFromPreviousTab = null;
     }
@@ -637,18 +631,16 @@
   }
 
   function mainTabs() {
-    const all = $$('.reds-tab-item');
-    if (all.length >= 2) {
-      const main = all.filter(function (el) { return !el.closest('.tab-content-item'); });
-      return main.length ? main : all;
-    }
-    const list = $$('[role="tab"], .user-page [class*="tab-item"], .tab-link, [class*="tab-item"]');
-    const matched = list.filter(function (el) {
+    const all = $$('.reds-tab-item, [role="tab"], .user-page [class*="tab-item"], .tab-link');
+    const matched = all.filter(function (el) {
+      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list')) return false;
       const t = (el.textContent || '').trim();
-      return /^(?:笔记|收藏|点赞|赞过)(?:\s*\d+)?$/.test(t);
+      return /^(?:笔记|收藏|点赞|赞过|喜欢)(?:\s*\d+)?$/.test(t);
     });
-    if (matched.length >= 2) return matched;
-    return list.length ? list : [];
+    const uniq = [];
+    matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
+    if (uniq.length >= 2) return uniq;
+    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item'); });
   }
 
   function getTabFromUrl() {
@@ -678,28 +670,25 @@
    * 'collect' (收藏) | 'like' (赞过) | 'notes' (我的笔记) | '' (未识别)
    * 
    * 权威判定顺序：
-   * 1. 绝对第一标准：官方地址栏参数（URL Query Parameter，100% 精准可靠，不受任何 DOM 结构干扰）
-   *    - 收藏地址：?tab=fav&subTab=note
-   *    - 点赞地址：?tab=liked
-   *    - 个人发布笔记：?tab=note
-   * 2. 仅在 URL 未包含 tab 参数时（例如刚进入用户主页根路径 /user/profile/:id），才检查主 Tab 栏 DOM
+   * 1. 绝对第一标准：页面主 Tab 当前客观高亮的 DOM 激活项（用户眼见为实）
+   *    在 SPA 单页应用中，DOM 激活状态直接决定了页面渲染的内容。严禁盲信 URL 参数，
+   *    防止用户在页面切换 Tab 时因 URL Query 未同步更新而导致点赞笔记串仓存入收藏缓存！
+   * 2. 兜底：若 DOM 尚未就绪或未找到高亮项，检查官方地址栏参数（URL Query Parameter）
+   * 3. 根路径 /user/profile/:id 无任何参数时，小红书默认展现博主自己的发布笔记列表 ('notes')
    */
   function getPageActualTabType() {
-    // 1. 优先读取官方地址栏参数（最准确、最可靠的官方唯一依据）
+    // 1. 优先读取主 Tab 自身真实激活状态（用户眼见为实的 DOM 真实态）
+    const cur = activeTabEl();
+    if (cur) {
+      const detected = detectTabFromText(cur.textContent);
+      if (detected) return detected;
+    }
+
+    // 2. 兜底：若 DOM 尚未渲染完成或未检出 active 标记，读取官方地址栏参数
     const urlTab = getTabFromUrl();
     if (urlTab) return urlTab;
 
-    // 2. 兜底：若 URL 未带 tab 参数，检查主 Tab 自身激活状态
-    const tabs = mainTabs();
-    for (let i = 0; i < tabs.length; i++) {
-      const el = tabs[i];
-      if (isTabItemActive(el)) {
-        const detected = detectTabFromText(el.textContent);
-        if (detected) return detected;
-      }
-    }
-
-    // 3. 根路径 /user/profile/:id 无 tab 参数时，小红书默认展现的是博主自己的发布笔记列表
+    // 3. 根路径 /user/profile/:id 无 tab 参数且无 DOM 时，小红书默认展现的是博主自己的发布笔记列表
     if (PROFILE_RE.test(location.pathname) && !location.search) {
       return 'notes';
     }
@@ -759,11 +748,6 @@
   }
 
   async function ensureTab(want) {
-    const curTabType = getPageActualTabType();
-    // 关键优化：如果当前 URL 已经处于目标 Tab（如要收藏且当前是 collect，或要点赞且当前是 like），无需重复切换
-    if (want === '收藏' && curTabType === 'collect') return;
-    if ((want === '赞过' || want === '点赞') && curTabType === 'like') return;
-
     const cur = activeTabEl();
     if (cur && tabMatches(cur, want)) return;
 
@@ -771,7 +755,7 @@
     if (!target) return;
     try { target.click(); } catch (e) {}
 
-    const deadline = nowMs() + 3000;
+    const deadline = nowMs() + 3500;
     while (nowMs() < deadline) {
       await sleep(250);
       const a = activeTabEl();
@@ -895,8 +879,8 @@
 
       if (atBottom) {
         stall++;
-        // 容错提升：至少连续 4 次检测到底部且完全无新卡片，才确认已达真实末尾（避免网络加载延迟导致早退）
-        if (stall >= 4) break;
+        // 容错提升：至少连续 6 次检测到底部且完全无新卡片，才确认已达真实末尾（给慢速网络留出充分缓冲时间）
+        if (stall >= 6) break;
 
         // 核心技巧：在底部触发微小的上下抖动回弹，强制唤醒可能休眠的 IntersectionObserver 或滚动监听器
         const el = findScrollContainer();
@@ -906,13 +890,13 @@
           el.scrollTop = el.scrollTop + 40;
           el.dispatchEvent(new Event('scroll', { bubbles: true }));
         } else {
-          window.scrollBy(0, -50);
+          window.scrollBy(0, -60);
           await sleep(120);
-          window.scrollBy(0, 50);
+          window.scrollBy(0, 60);
           window.dispatchEvent(new Event('scroll'));
         }
 
-        await sleep(900);
+        await sleep(1000);
         merge();
       }
     }
@@ -2454,6 +2438,7 @@
       } else {
         log('扫描完成：读到 ' + state.candidates.length + ' 篇。可以直接在页面上点卡片左上角勾选，或在侧边栏中搜索后「全选命中」', 'ok');
       }
+      log('💡 提示：若此数量少于您主页总数，属于小红书正常机制：自定义专辑中的笔记需在专辑内查看，且已失效/下架笔记不会在网页中渲染。', 'info');
     } catch (e) {
       log('扫描失败：' + ((e && e.message) || e), 'err');
     } finally {
