@@ -1665,6 +1665,157 @@ test('用户手动滑动页面增量加载机制：捕获阶段监听全容器�
   assert.strictEqual(modeCache.uncollect.length, 40, '候选集无感扩展至 40 篇');
 });
 
+test('防串仓终极闭环：反复来回切换收藏/点赞Tab绝不互相渗透，数量稳定不膨胀（杜绝26->33->43->48串仓合流）', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 代码静态防线校验
+  assert.ok(contentCode.includes('function isCardVisible('), '必须包含 isCardVisible 严谨可见性过滤');
+  assert.ok(contentCode.includes('state.modeCache[prevMode].forEach('), 'beginTabTransition 必须拍摄前一模式的全部缓存卡片');
+  assert.ok(contentCode.includes('if (tabTransitionStaleIds && tabTransitionStaleIds.has(c.id))'), 'syncDomCardsToCandidates 必须坚决丢弃所有旧Tab黑名单卡片');
+
+  // 2. 模拟完整的反复切换 Tab 运行状态机
+  let currentScannedTabType = 'collect';
+  let tabTransitionLock = false;
+  let tabTransitionTarget = '';
+  let tabTransitionStaleIds = new Set();
+  const modeCache = {
+    uncollect: [],
+    unlike: [],
+  };
+
+  function simulateBeginTabTransition(targetTab, domCards) {
+    if (currentScannedTabType === targetTab && !tabTransitionLock) return;
+    const ids = domCards.map(c => c.id);
+    tabTransitionStaleIds = new Set(ids);
+    const prevMode = currentScannedTabType === 'like' ? 'unlike' : (currentScannedTabType === 'collect' ? 'uncollect' : '');
+    if (prevMode && modeCache[prevMode]) {
+      modeCache[prevMode].forEach(n => {
+        if (n && n.id) tabTransitionStaleIds.add(n.id);
+      });
+    }
+    tabTransitionLock = true;
+    tabTransitionTarget = targetTab;
+  }
+
+  function simulateSync(domCards, actualTab) {
+    if (actualTab !== 'collect' && actualTab !== 'like') return false;
+    if (currentScannedTabType && currentScannedTabType !== actualTab && !tabTransitionLock) {
+      simulateBeginTabTransition(actualTab, domCards);
+    }
+    if (!currentScannedTabType) currentScannedTabType = actualTab;
+
+    if (tabTransitionLock) {
+      if (actualTab !== tabTransitionTarget) return false;
+      if (!domCards.length) return false;
+
+      const allStale = domCards.every(c => tabTransitionStaleIds.has(c.id));
+      if (allStale) return false;
+
+      const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+      if (!anyStale) {
+        tabTransitionLock = false;
+        tabTransitionStaleIds.clear();
+      }
+    }
+
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    const targetList = modeCache[targetMode];
+    let changed = false;
+
+    const validCards = [];
+    for (let i = 0; i < domCards.length; i++) {
+      const c = domCards[i];
+      if (tabTransitionStaleIds && tabTransitionStaleIds.has(c.id)) {
+        continue;
+      }
+      validCards.push(c);
+    }
+
+    const existingMap = new Map();
+    targetList.forEach(n => existingMap.set(n.id, n));
+    validCards.forEach(c => {
+      if (!existingMap.has(c.id)) {
+        targetList.push(c);
+        existingMap.set(c.id, c);
+        changed = true;
+      }
+    });
+
+    return changed;
+  }
+
+  // 场景：真实用户数据设定
+  // 收藏笔记 20 篇
+  const collectCards = Array.from({ length: 20 }, (_, i) => ({
+    id: ('col_' + String(i).padStart(4, '0')).padEnd(24, '0'),
+    title: '收藏笔记 ' + i,
+  }));
+  // 点赞笔记 13 篇（首屏渲染 6 篇，后续加载 7 篇）
+  const likeCardsBatch1 = Array.from({ length: 6 }, (_, i) => ({
+    id: ('like_' + String(i).padStart(4, '0')).padEnd(24, '0'),
+    title: '点赞笔记 b1-' + i,
+  }));
+  const likeCardsBatch2 = Array.from({ length: 7 }, (_, i) => ({
+    id: ('like_' + String(i + 6).padStart(4, '0')).padEnd(24, '0'),
+    title: '点赞笔记 b2-' + (i + 6),
+  }));
+  const allLikeCards = likeCardsBatch1.concat(likeCardsBatch2);
+
+  // 阶段 1：首屏加载收藏 Tab（20篇），点赞为 0
+  simulateSync(collectCards, 'collect');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏初始为 20 篇');
+  assert.strictEqual(modeCache.unlike.length, 0, '点赞初始为 0 篇');
+
+  // 阶段 2：用户点击小红书「点赞」Tab
+  // 切换瞬间，DOM 中依然残留 20 篇旧收藏卡片
+  simulateBeginTabTransition('like', collectCards);
+  currentScannedTabType = 'like';
+
+  // 2.1 小红书异步换批中：首批 6 篇点赞渲染进 DOM，但此时旧收藏卡片尚未彻底卸载
+  const mixedDom = collectCards.concat(likeCardsBatch1);
+  simulateSync(mixedDom, 'like');
+  // 核心断言：坚决排除残留的 20 篇旧收藏卡片，只接受新点赞笔记（必须为 6，绝不可变成 20+6=26！）
+  assert.strictEqual(modeCache.unlike.length, 6, '点赞首批卡片入库为 6 篇，绝不膨胀为 26！');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏依然保持 20 篇');
+
+  // 2.2 小红书异步换批完成：旧收藏卡片全部卸载，余下 7 篇点赞卡片也全部渲染就绪
+  simulateSync(allLikeCards, 'like');
+  // 核心断言：点赞最终达到完整的 13 篇（必须为 13，绝不可变成 20+13=33！）
+  assert.strictEqual(modeCache.unlike.length, 13, '点赞完整入库为 13 篇，绝不膨胀为 33！');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏依然保持 20 篇');
+
+  // 阶段 3：用户此时点击返回「收藏」Tab
+  simulateBeginTabTransition('collect', allLikeCards);
+  currentScannedTabType = 'collect';
+  // 小红书加载出 20 篇收藏卡片
+  simulateSync(collectCards, 'collect');
+  // 核心断言：收藏卡片恢复，绝不可将之前的 13/23 篇点赞混入收藏（必须为 20，绝不可变成 43！）
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏卡片依然保持准确的 20 篇，绝不膨胀为 43！');
+  assert.strictEqual(modeCache.unlike.length, 13, '点赞依然保持准确的 13 篇');
+
+  // 阶段 4：用户左右 Tab 反复来回点 10 次，模拟极限快速切换
+  for (let round = 1; round <= 10; round++) {
+    // 切到点赞
+    simulateBeginTabTransition('like', collectCards);
+    currentScannedTabType = 'like';
+    simulateSync(allLikeCards, 'like');
+
+    // 切回收藏
+    simulateBeginTabTransition('collect', allLikeCards);
+    currentScannedTabType = 'collect';
+    simulateSync(collectCards, 'collect');
+
+    // 每次切换后严格核验
+    assert.strictEqual(modeCache.uncollect.length, 20, `第 ${round} 轮切换后收藏依然保持准确的 20 篇`);
+    assert.strictEqual(modeCache.unlike.length, 13, `第 ${round} 轮切换后点赞依然保持准确的 13 篇`);
+  }
+
+  // 终极断言：两者合流总数绝不可能变成 48
+  assert.strictEqual(modeCache.uncollect.length + modeCache.unlike.length, 33, '两者独立计数之和为 33 (20+13)，绝不合流变成 48');
+});
+
 
 
 
