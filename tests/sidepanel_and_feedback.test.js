@@ -2026,7 +2026,7 @@ test('Tab同步与突破20条限制：sub-tab-list正常识别、侧边栏双向
   domTabs[0].className = 'reds-tab-item sub-tab-list';
   domTabs[1].className = 'reds-tab-item sub-tab-list active'; // 收藏已高亮
 
-  function simulateGetPageActualTabType(activeEl, search, pathname, currentMode) {
+  function simulateGetPageActualTabType(activeEl, search) {
     if (activeEl) {
       const d = detectTabFromText(activeEl.textContent);
       if (d) return d;
@@ -2034,18 +2034,15 @@ test('Tab同步与突破20条限制：sub-tab-list正常识别、侧边栏双向
     const tab = new URLSearchParams(search).get('tab');
     if (tab === 'fav') return 'collect';
     if (tab === 'liked') return 'like';
-    if (pathname.startsWith('/user/profile/')) {
-      if (currentMode === 'unlike') return 'like';
-      if (currentMode === 'uncollect') return 'collect';
-    }
+    if (tab === 'note') return 'notes';
     return '';
   }
 
-  const actualOnCollect = simulateGetPageActualTabType(domTabs[1], '', '/user/profile/12345', 'uncollect');
+  const actualOnCollect = simulateGetPageActualTabType(domTabs[1], '');
   assert.strictEqual(actualOnCollect, 'collect', '小红书页面收藏 Tab 处于 active 时，精准返回 collect');
 
-  const fallbackCollect = simulateGetPageActualTabType(null, '', '/user/profile/12345', 'uncollect');
-  assert.strictEqual(fallbackCollect, 'collect', '即使 DOM 暂未渲染且 URL 无参数，按当前 uncollect 模式兜底为 collect，绝不误判为 notes！');
+  const fallbackCollect = simulateGetPageActualTabType(null, '');
+  assert.strictEqual(fallbackCollect, '', '若 DOM 暂未渲染且 URL 无参数，安全返回空字符串，绝不盲目套用侧边栏模式导致串仓！');
 
   // 4. 模拟收藏数据突破 20 条限制，无论是自动读取还是手动滑动页面
   const modeCache = {
@@ -2074,6 +2071,96 @@ test('Tab同步与突破20条限制：sub-tab-list正常识别、侧边栏双向
     lock = false;
   }
   assert.strictEqual(lock, false, '过渡锁具有 3.5s 超时安全释放，杜绝共存笔记引发死锁');
+});
+
+test('终极防串仓：旧DOM卡片在Tab切换期间绝对阻断、对立模式卡片物理互斥，来回切换数量绝对稳定', async () => {
+  // 模拟状态缓存
+  const modeCache = {
+    uncollect: Array.from({ length: 20 }, (_, i) => ({ id: 'col_' + i, title: '收藏笔记 ' + i })),
+    unlike: Array.from({ length: 28 }, (_, i) => ({ id: 'like_' + i, title: '点赞笔记 ' + i })),
+  };
+
+  let tabTransitionLock = false;
+  let tabTransitionStaleIds = new Set();
+  let tabTransitionTarget = '';
+  let tabTransitionStartTime = 0;
+
+  function beginTabTransition(targetTab, currentDomCards) {
+    tabTransitionStaleIds = new Set(currentDomCards.map(c => c.id));
+    tabTransitionLock = true;
+    tabTransitionTarget = targetTab;
+    tabTransitionStartTime = Date.now();
+  }
+
+  function simulateSync(actualTab, domCards) {
+    if (tabTransitionLock) {
+      if (actualTab !== tabTransitionTarget) return false;
+      const allStale = domCards.every(c => tabTransitionStaleIds.has(c.id));
+      if (allStale) return false;
+      const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+      if (anyStale) return false; // 严格阻断！
+      tabTransitionLock = false;
+      tabTransitionStaleIds.clear();
+    }
+
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    const oppositeMode = actualTab === 'like' ? 'uncollect' : 'unlike';
+    const oppositeSet = new Set((modeCache[oppositeMode] || []).map(n => n.id));
+
+    let added = 0;
+    for (const c of domCards) {
+      if (tabTransitionStaleIds.has(c.id)) continue;
+      if (oppositeSet.has(c.id)) continue; // 绝对阻断对立模式已有卡片渗透！
+      if (!modeCache[targetMode].some(x => x.id === c.id)) {
+        modeCache[targetMode].push(c);
+        added++;
+      }
+    }
+    return added > 0;
+  }
+
+  // 1. 用户当前在收藏页面，DOM 显示 20 篇收藏卡片
+  let currentDom = modeCache.uncollect.slice();
+
+  // 2. 用户点击切换至「点赞」Tab：此时触发 beginTabTransition，DOM 仍残留原 20 篇收藏卡片
+  beginTabTransition('like', currentDom);
+  assert.strictEqual(tabTransitionLock, true, '开启过渡锁');
+  assert.strictEqual(tabTransitionStaleIds.size, 20, '记录当前 20 篇旧卡片为黑名单');
+
+  // 小红书新网络请求尚未返回，DOM 依然是旧的收藏卡片，实际 Tab 已经变为 like
+  const syncDuringTransition = simulateSync('like', currentDom);
+  assert.strictEqual(syncDuringTransition, false, '过渡期间旧卡片在 DOM 中残留，严密阻断入库');
+  assert.strictEqual(modeCache.unlike.length, 28, '点赞缓存严密保持 28 篇，原 20 篇收藏绝不混入！');
+
+  // 3. 小红书渲染完成，DOM 换批展现 28 篇点赞卡片
+  currentDom = modeCache.unlike.slice();
+  const syncAfterLoaded = simulateSync('like', currentDom);
+  assert.strictEqual(tabTransitionLock, false, '新卡片完全就绪且旧卡片彻底卸载，过渡锁安全解除');
+  assert.strictEqual(modeCache.unlike.length, 28, '点赞缓存依然为 28 篇');
+  assert.strictEqual(modeCache.uncollect.length, 20, '收藏缓存依然为 20 篇');
+
+  // 4. 用户反复来回切换 10 次
+  for (let i = 0; i < 10; i++) {
+    // 切到收藏
+    beginTabTransition('collect', currentDom);
+    simulateSync('collect', currentDom); // 残留点赞旧卡片 -> 阻断
+    currentDom = modeCache.uncollect.slice(); // 换批完成
+    simulateSync('collect', currentDom);
+
+    // 切到点赞
+    beginTabTransition('like', currentDom);
+    simulateSync('like', currentDom); // 残留收藏旧卡片 -> 阻断
+    currentDom = modeCache.unlike.slice(); // 换批完成
+    simulateSync('like', currentDom);
+  }
+
+  assert.strictEqual(modeCache.uncollect.length, 20, '反复切换后收藏笔记数绝对保持 20，绝不膨胀到 48！');
+  assert.strictEqual(modeCache.unlike.length, 28, '反复切换后点赞笔记数绝对保持 28，绝不膨胀到 48！');
+  assert.strictEqual(
+    modeCache.uncollect.every(c => !modeCache.unlike.some(l => l.id === c.id)),
+    true,
+    '收藏与点赞列表完全物理互斥，没有任何交叉污染！'
+  );
 });
 
 
