@@ -633,7 +633,18 @@
     currentScannedTabType = targetTab;
     tabSwitchGeneration++;
 
+    // 【方案 A 核心】：换仓时彻底重置当前工作区！
+    // 销毁旧工作区候选池，防止任何前序 Tab 的卡片残留在内存中引起数据污染！
+    if (targetMode) {
+      state.settings.mode = targetMode;
+      state.modeCache[targetMode] = [];
+      state.candidates = state.modeCache[targetMode];
+      state.selected.clear();
+      saveSettings();
+    }
+
     clearPageCards();
+    broadcastState();
   }
 
   /**
@@ -765,6 +776,9 @@
 
   function isTabItemActive(el) {
     if (!el) return false;
+    // 排除子标签本身（如全部笔记、专辑）被误当成主标签
+    if (el.closest && el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"]')) return false;
+    // 阶段 1：首选显式激活标记（aria-selected 或 active class）
     if (el.getAttribute && el.getAttribute('aria-selected') === 'true') return true;
     if (el.classList) {
       if (el.classList.contains('reds-tab-item-active') ||
@@ -775,10 +789,6 @@
       }
     }
     if (ACTIVE_RE.test(el.className || '')) return true;
-    if (el.querySelector) {
-      const childActive = el.querySelector('.active, .is-active, .selected, .current, [aria-selected="true"]');
-      if (childActive) return true;
-    }
     return false;
   }
 
@@ -787,7 +797,10 @@
     const headers = $$('#userPageTabs, .user-tabs, .reds-tabs-header, .reds-tabs-list, .user-page-tabs, .user-page .reds-tabs, .reds-tabs, .tab-bar, [class*="tab-bar"], [class*="tabs-header"]');
     for (let h = 0; h < headers.length; h++) {
       if (headers[h].closest && headers[h].closest('.feeds-container, .note-list, #rn-manager-host')) continue;
-      const candidates = $$('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]', headers[h]);
+      const candidates = $$('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]', headers[h])
+        .filter(function (el) {
+          return !el.closest || !el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"]');
+        });
       let hasCollect = false;
       let hasLikeOrNotes = false;
       const validInHeader = [];
@@ -804,17 +817,17 @@
       }
     }
 
-    // 2. 兜底：全页面扫描，严格排除笔记卡片容器与插件自身面板（绝不可误排除带有 sub-tab-list 的主 Tab 自身）
+    // 2. 兜底：全页面扫描，严格排除笔记卡片容器与插件自身面板
     const all = $$('#userPageTabs .reds-tab-item, .user-page .reds-tab-item, .reds-tabs-header .reds-tab-item, .reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]');
     const matched = all.filter(function (el) {
-      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
+      if (el.closest && el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"], .tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
       const detected = detectTabFromText(el.textContent);
       return detected === 'like' || detected === 'collect' || detected === 'notes';
     });
     const uniq = [];
     matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
     if (uniq.length >= 2) return uniq;
-    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host'); });
+    return all.filter(function (el) { return !el.closest || !el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"], .tab-content-item, .feeds-container, .note-list, #rn-manager-host'); });
   }
 
   function getTabFromUrl() {
@@ -928,25 +941,9 @@
   function syncModeWithActiveTab() {
     const tabType = getPageActualTabType();
     if (tabType === 'collect' && state.settings.mode !== 'uncollect') {
-      state.settings.mode = 'uncollect';
-      syncActiveModePointers();
-      saveSettings();
-      state.anchorId = null;
-      clearPageCards();
-      afterSelectionChange();
-      if (stackState.open) syncStackListToFilter();
-      refreshPageCards();
-      broadcastState();
+      beginTabTransition('collect');
     } else if (tabType === 'like' && state.settings.mode !== 'unlike') {
-      state.settings.mode = 'unlike';
-      syncActiveModePointers();
-      saveSettings();
-      state.anchorId = null;
-      clearPageCards();
-      afterSelectionChange();
-      if (stackState.open) syncStackListToFilter();
-      refreshPageCards();
-      broadcastState();
+      beginTabTransition('like');
     }
   }
 

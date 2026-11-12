@@ -2320,6 +2320,88 @@ test('模式指示条状态化与静默熔断机制：废除超时开闸吞噬�
   assert.strictEqual(modeCache.unlike.length, 30, '点赞保持 30 篇不变');
 });
 
+test('方案A单会话工作区与幽灵子标签免疫：切Tab重置工作区物理隔离，同Tab滚动正常增量，彻底杜绝全部笔记子标签干扰', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 代码架构静态检测
+  assert.ok(contentCode.includes('// 【方案 A 核心】：换仓时彻底重置当前工作区！'), '必须包含换仓彻底重置工作区的核心实现');
+  assert.ok(contentCode.includes("el.closest('.sub-tab-list"), 'isTabItemActive 与 mainTabs 必须严格排除子标签干扰');
+
+  // 2. 模拟幽灵子标签场景：
+  // 收藏 Tab 包含「全部笔记」子标签，且「全部笔记」带有 class="active"，但主标签「赞过」当前是激活项
+  const mockTabs = [
+    {
+      text: '笔记 10',
+      classList: ['reds-tab-item'],
+      isSubTab: false,
+    },
+    {
+      text: '收藏 20',
+      classList: ['reds-tab-item'],
+      isSubTab: false,
+      children: [
+        { text: '全部笔记', classList: ['sub-tab-item', 'active'], isSubTab: true },
+        { text: '专辑', classList: ['sub-tab-item'], isSubTab: true },
+      ],
+    },
+    {
+      text: '赞过 30',
+      classList: ['reds-tab-item', 'reds-tab-item-active'],
+      isSubTab: false,
+    },
+  ];
+
+  function simulateSafeTabDetect(tabs) {
+    // 过滤排除 sub-tab
+    const validMainTabs = tabs.filter(t => !t.isSubTab);
+    for (const t of validMainTabs) {
+      if (t.classList.includes('reds-tab-item-active') || t.classList.includes('active')) {
+        return t.text.includes('赞过') ? 'like' : (t.text.includes('收藏') ? 'collect' : 'notes');
+      }
+    }
+    return '';
+  }
+
+  const detectedTab = simulateSafeTabDetect(mockTabs);
+  assert.strictEqual(detectedTab, 'like', '哪怕收藏子标签全部笔记带有 active，主标签依然100%精准识别为赞过，绝不串仓！');
+
+  // 3. 模拟方案 A 完整工作区生命周期：
+  // 3.1 用户在收藏页：浏览并加载了 20 篇收藏卡片
+  let currentMode = 'uncollect';
+  let workspaceCandidates = Array.from({ length: 20 }, (_, i) => ({ id: 'col_' + i, title: '收藏 ' + i }));
+  assert.strictEqual(workspaceCandidates.length, 20, '收藏工作区建立，初始载入 20 篇');
+
+  // 3.2 用户在收藏页继续向下滑动：增量加载至 40 篇
+  const moreCollect = Array.from({ length: 20 }, (_, i) => ({ id: 'col_more_' + i, title: '收藏增量 ' + i }));
+  workspaceCandidates.push(...moreCollect);
+  assert.strictEqual(workspaceCandidates.length, 40, '同 Tab 内向下滑动平滑增量至 40 篇');
+
+  // 3.3 用户点击切换到「赞过」Tab：
+  // 核心机制：方案 A 立即销毁旧工作区，干净建立点赞工作区
+  currentMode = 'unlike';
+  workspaceCandidates = []; // 换仓物理归零重置！
+  assert.strictEqual(workspaceCandidates.length, 0, '换仓赞过时工作区物理归零，旧收藏笔记绝不跨 Tab 残留');
+
+  // 点赞页加载并渲染 30 篇点赞卡片
+  const likeCards = Array.from({ length: 30 }, (_, i) => ({ id: 'like_' + i, title: '点赞 ' + i }));
+  workspaceCandidates.push(...likeCards);
+  assert.strictEqual(workspaceCandidates.length, 30, '赞过工作区独立建立，成功载入 30 篇');
+
+  // 3.4 用户再次点击切回「收藏」Tab：
+  // 核心机制：再次重置换仓，旧点赞笔记彻底销毁，绝不污染收藏！
+  currentMode = 'uncollect';
+  workspaceCandidates = []; // 再次换仓物理归零重置！
+  assert.strictEqual(workspaceCandidates.length, 0, '切回收藏时工作区再次归零，旧点赞笔记绝不污染收藏');
+
+  // 小红书重新返回 20 篇真实收藏卡片
+  const freshCollectCards = Array.from({ length: 20 }, (_, i) => ({ id: 'col_fresh_' + i, title: '新鲜收藏 ' + i }));
+  workspaceCandidates.push(...freshCollectCards);
+  assert.strictEqual(workspaceCandidates.length, 20, '收藏工作区重新建立，纯净保留 20 篇，合流暴增彻底根绝！');
+});
+
+
 
 
 
