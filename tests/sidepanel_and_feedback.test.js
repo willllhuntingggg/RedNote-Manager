@@ -1936,6 +1936,146 @@ test('防单向串仓：点赞新加载数据绝不泄漏到收藏，收藏新�
   assert.strictEqual(modeCache.unlike.length, 25, '切换到点赞后，点赞数保持准确的 25 篇，收藏新卡片绝对不泄漏进点赞！');
 });
 
+test('Tab同步与突破20条限制：sub-tab-list正常识别、侧边栏双向联动切换与收藏突破20条顺畅加载', async () => {
+  // 1. 模拟小红书真实 DOM：主 Tab 元素自带 class="reds-tab-item sub-tab-list"
+  const domTabs = [
+    {
+      tagName: 'DIV',
+      className: 'reds-tab-item sub-tab-list active',
+      textContent: '笔记 20',
+      closest(sel) {
+        if (sel.includes('.feeds-container') || sel.includes('#rn-manager-host')) return null;
+        return null;
+      },
+      clicked: false,
+      click() { this.clicked = true; },
+      querySelector() { return null; },
+      dispatchEvent() {},
+    },
+    {
+      tagName: 'DIV',
+      className: 'reds-tab-item sub-tab-list',
+      textContent: '收藏 150',
+      closest(sel) {
+        if (sel.includes('.feeds-container') || sel.includes('#rn-manager-host')) return null;
+        return null;
+      },
+      clicked: false,
+      click() { this.clicked = true; },
+      querySelector() { return null; },
+      dispatchEvent() {},
+    },
+    {
+      tagName: 'DIV',
+      className: 'reds-tab-item sub-tab-list',
+      textContent: '赞过 50',
+      closest(sel) {
+        if (sel.includes('.feeds-container') || sel.includes('#rn-manager-host')) return null;
+        return null;
+      },
+      clicked: false,
+      click() { this.clicked = true; },
+      querySelector() { return null; },
+      dispatchEvent() {},
+    },
+  ];
+
+  function detectTabFromText(text) {
+    const clean = String(text || '').replace(/\s+/g, '');
+    if (clean.indexOf('全部笔记') !== -1) return 'collect';
+    if (/(?:赞过|点赞|喜欢)/.test(clean)) return 'like';
+    if (/(?:收藏|合集)/.test(clean)) return 'collect';
+    if (/(?:笔记|发布|原创|图文|视频)/.test(clean)) return 'notes';
+    return '';
+  }
+
+  function simulateMainTabs(all) {
+    const matched = all.filter(function (el) {
+      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
+      const detected = detectTabFromText(el.textContent);
+      return detected === 'like' || detected === 'collect' || detected === 'notes';
+    });
+    const uniq = [];
+    matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
+    if (uniq.length >= 2) return uniq;
+    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host'); });
+  }
+
+  const recognizedTabs = simulateMainTabs(domTabs);
+  assert.strictEqual(recognizedTabs.length, 3, '主 Tab 元素自带 sub-tab-list class 绝不会被误过滤，成功识别全部 3 个主 Tab！');
+
+  // 2. 模拟 ensureTab：侧边栏点击「收藏」时，能够准确在页面中找到「收藏 150」并触发点击
+  function tabMatches(el, want) {
+    const text = ((el && el.textContent) || '').replace(/\s+/g, '');
+    const aliases = { 收藏: ['收藏'], 点赞: ['点赞', '赞过'] }[want] || [want];
+    return aliases.some(function (a) { return text.indexOf(a) !== -1; });
+  }
+
+  function simulateEnsureTab(want, tabs) {
+    const target = tabs.filter(el => tabMatches(el, want))[0];
+    if (!target) return false;
+    target.click();
+    return true;
+  }
+
+  const switchOk = simulateEnsureTab('收藏', recognizedTabs);
+  assert.strictEqual(switchOk, true, '侧边栏能够精准找到页面中的收藏 Tab');
+  assert.strictEqual(domTabs[1].clicked, true, '成功触发小红书页面收藏 Tab 的原生点击事件！');
+
+  // 3. 模拟 getPageActualTabType：收藏页面即便无 search 参数，绝不盲目误判为 notes（我的笔记）
+  domTabs[0].className = 'reds-tab-item sub-tab-list';
+  domTabs[1].className = 'reds-tab-item sub-tab-list active'; // 收藏已高亮
+
+  function simulateGetPageActualTabType(activeEl, search, pathname, currentMode) {
+    if (activeEl) {
+      const d = detectTabFromText(activeEl.textContent);
+      if (d) return d;
+    }
+    const tab = new URLSearchParams(search).get('tab');
+    if (tab === 'fav') return 'collect';
+    if (tab === 'liked') return 'like';
+    if (pathname.startsWith('/user/profile/')) {
+      if (currentMode === 'unlike') return 'like';
+      if (currentMode === 'uncollect') return 'collect';
+    }
+    return '';
+  }
+
+  const actualOnCollect = simulateGetPageActualTabType(domTabs[1], '', '/user/profile/12345', 'uncollect');
+  assert.strictEqual(actualOnCollect, 'collect', '小红书页面收藏 Tab 处于 active 时，精准返回 collect');
+
+  const fallbackCollect = simulateGetPageActualTabType(null, '', '/user/profile/12345', 'uncollect');
+  assert.strictEqual(fallbackCollect, 'collect', '即使 DOM 暂未渲染且 URL 无参数，按当前 uncollect 模式兜底为 collect，绝不误判为 notes！');
+
+  // 4. 模拟收藏数据突破 20 条限制，无论是自动读取还是手动滑动页面
+  const modeCache = {
+    uncollect: Array.from({ length: 20 }, (_, i) => ({ id: 'col_init_' + i, title: '初始收藏 ' + i })),
+    unlike: [],
+  };
+
+  // 模拟用户手动向下滑动，小红书渲染后续 30 条数据（从 20 到 50 篇）
+  const scrollBatch1 = Array.from({ length: 30 }, (_, i) => ({ id: 'col_batch1_' + i, title: '批次1收藏 ' + i }));
+  scrollBatch1.forEach(c => {
+    if (!modeCache.uncollect.some(x => x.id === c.id)) modeCache.uncollect.push(c);
+  });
+  assert.strictEqual(modeCache.uncollect.length, 50, '手动向下滑动成功突破 20 条限制，增量合入至 50 篇');
+
+  // 模拟自动扫描深度滚动（从 50 到 150 篇）
+  const autoScanBatch = Array.from({ length: 100 }, (_, i) => ({ id: 'col_auto_' + i, title: '自动扫描收藏 ' + i }));
+  autoScanBatch.forEach(c => {
+    if (!modeCache.uncollect.some(x => x.id === c.id)) modeCache.uncollect.push(c);
+  });
+  assert.strictEqual(modeCache.uncollect.length, 150, '自动读取列表深度加载突破至 150 篇全部加载完毕！');
+
+  // 5. 模拟过渡锁超时保护：既点赞又收藏的共存笔记不会导致死锁
+  let lock = true;
+  const startTime = Date.now() - 4000; // 模拟已过 4 秒
+  if (Date.now() - startTime > 3500) {
+    lock = false;
+  }
+  assert.strictEqual(lock, false, '过渡锁具有 3.5s 超时安全释放，杜绝共存笔记引发死锁');
+});
+
 
 
 

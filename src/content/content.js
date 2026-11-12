@@ -653,26 +653,32 @@
         return false;
       }
 
-      const allCards = scanCards(actualTab);
-      if (!allCards.length) {
-        return false; // DOM 处于清空/加载中状态，暂不入库
-      }
-
-      // 只要 DOM 中的卡片全部是切换前拍摄的旧卡片，说明小红书新卡片尚未渲染，暂不入库
-      const allStale = allCards.every(function (c) {
-        return tabTransitionStaleIds.has(c.id);
-      });
-      if (allStale) {
-        return false;
-      }
-
-      // 只有当 DOM 中的旧卡片全部彻底卸载（页面已完全展示新 Tab 内容）后，才安全解除过渡锁与清空黑名单
-      const anyStale = allCards.some(function (c) {
-        return tabTransitionStaleIds.has(c.id);
-      });
-      if (!anyStale) {
+      // 超过 3.5 秒过渡缓冲期，自动解除锁定并清空陈旧黑名单，防止死锁
+      if (Date.now() - tabTransitionStartTime > 3500) {
         tabTransitionLock = false;
         tabTransitionStaleIds.clear();
+      } else {
+        const allCards = scanCards(actualTab);
+        if (!allCards.length) {
+          return false; // DOM 处于清空/加载中状态，暂不入库
+        }
+
+        // 只要 DOM 中的卡片全部是切换前拍摄的旧卡片，说明小红书新卡片尚未渲染，暂不入库
+        const allStale = allCards.every(function (c) {
+          return tabTransitionStaleIds.has(c.id);
+        });
+        if (allStale) {
+          return false;
+        }
+
+        // 只有当 DOM 中的旧卡片全部彻底卸载（页面已完全展示新 Tab 内容）后，才安全解除过渡锁与清空黑名单
+        const anyStale = allCards.some(function (c) {
+          return tabTransitionStaleIds.has(c.id);
+        });
+        if (!anyStale) {
+          tabTransitionLock = false;
+          tabTransitionStaleIds.clear();
+        }
       }
     }
 
@@ -734,6 +740,7 @@
 
   function detectTabFromText(text) {
     const clean = String(text || '').replace(/\s+/g, '');
+    if (clean.indexOf('全部笔记') !== -1) return 'collect';
     if (/(?:赞过|点赞|喜欢)/.test(clean)) return 'like';
     if (/(?:收藏|合集)/.test(clean)) return 'collect';
     if (/(?:笔记|发布|原创|图文|视频)/.test(clean)) return 'notes';
@@ -766,37 +773,38 @@
   }
 
   function mainTabs() {
-    // 1. 优先定位同时包含「收藏」与「点赞」的主 Tab 栏容器（绝不误入子 Tab）
-    const headers = $$('#userPageTabs, .user-tabs, .reds-tabs-header, .user-page-tabs, .user-page .reds-tabs, .reds-tabs');
+    // 1. 优先定位同时包含「收藏」与（「点赞」或「发布笔记」）的主 Tab 栏容器
+    const headers = $$('#userPageTabs, .user-tabs, .reds-tabs-header, .reds-tabs-list, .user-page-tabs, .user-page .reds-tabs, .reds-tabs, .tab-bar, [class*="tab-bar"], [class*="tabs-header"]');
     for (let h = 0; h < headers.length; h++) {
+      if (headers[h].closest && headers[h].closest('.feeds-container, .note-list, #rn-manager-host')) continue;
       const candidates = $$('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]', headers[h]);
       let hasCollect = false;
-      let hasLike = false;
+      let hasLikeOrNotes = false;
       const validInHeader = [];
       for (let i = 0; i < candidates.length; i++) {
         const d = detectTabFromText(candidates[i].textContent);
         if (d === 'collect') hasCollect = true;
-        if (d === 'like') hasLike = true;
+        if (d === 'like' || d === 'notes') hasLikeOrNotes = true;
         if (d === 'collect' || d === 'like' || d === 'notes') {
           validInHeader.push(candidates[i]);
         }
       }
-      if (hasCollect && hasLike && validInHeader.length >= 2) {
+      if (hasCollect && hasLikeOrNotes && validInHeader.length >= 2) {
         return validInHeader;
       }
     }
 
-    // 2. 兜底：全页面扫描，严格排除子 Tab 容器
-    const all = $$('#userPageTabs .reds-tab-item, .user-page .reds-tab-item, .reds-tabs-header .reds-tab-item, .reds-tab-item, [role="tab"], .tab-link');
+    // 2. 兜底：全页面扫描，严格排除笔记卡片容器与插件自身面板（绝不可误排除带有 sub-tab-list 的主 Tab 自身）
+    const all = $$('#userPageTabs .reds-tab-item, .user-page .reds-tab-item, .reds-tabs-header .reds-tab-item, .reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]');
     const matched = all.filter(function (el) {
-      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, .sub-tab-list, .sub-tabs, [class*="sub-tab"]')) return false;
+      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
       const detected = detectTabFromText(el.textContent);
       return detected === 'like' || detected === 'collect' || detected === 'notes';
     });
     const uniq = [];
     matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
     if (uniq.length >= 2) return uniq;
-    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container, .sub-tab-list, [class*="sub-tab"]'); });
+    return all.filter(function (el) { return !el.closest || !el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host'); });
   }
 
   function getTabFromUrl() {
@@ -844,9 +852,10 @@
     const urlTab = getTabFromUrl();
     if (urlTab) return urlTab;
 
-    // 3. 根路径 /user/profile/:id 无 tab 参数且无 DOM 时，小红书默认展现的是博主自己的发布笔记列表
-    if (PROFILE_RE.test(location.pathname) && !location.search) {
-      return 'notes';
+    // 3. 若 DOM 与 URL 尚未就绪或未携带参数，根据当前插件明确的模式兜底，绝不盲目误判为发布笔记页（notes）
+    if (PROFILE_RE.test(location.pathname)) {
+      if (state.settings && state.settings.mode === 'unlike') return 'like';
+      if (state.settings && state.settings.mode === 'uncollect') return 'collect';
     }
 
     return '';
@@ -955,8 +964,8 @@
           const anyStale = cards.some(function (c) {
             return tabTransitionStaleIds && tabTransitionStaleIds.has(c.id);
           });
-          // 只有当 DOM 中的旧卡片全部彻底卸载后，才安全解除过渡锁与清空黑名单
-          if (!anyStale) {
+          // 当 DOM 中没有旧卡片，或过渡已超 3 秒时，安全解除过渡锁与清空黑名单
+          if (!anyStale || nowMs() - tabTransitionStartTime > 3000) {
             tabTransitionLock = false;
             tabTransitionStaleIds.clear();
           }
@@ -965,7 +974,9 @@
       }
       await sleep(150);
     }
-    // 超时结束时：若 DOM 中仍有旧卡片残留，绝对不能盲目清空黑名单，防止旧卡片串仓入库
+    // 超时结束时强制解锁过渡锁，防止死锁
+    tabTransitionLock = false;
+    tabTransitionStaleIds.clear();
     return true;
   }
 
@@ -979,7 +990,8 @@
       return true;
     }
 
-    const target = mainTabs().filter(function (el) { return tabMatches(el, want); })[0];
+    const tabs = mainTabs();
+    const target = tabs.filter(function (el) { return tabMatches(el, want); })[0];
     if (!target) return false;
 
     // 记录切换前页面的旧卡片黑名单并熔断先前扫描
@@ -987,31 +999,45 @@
       beginTabTransition(wantTab);
     }
 
-    // 触发点击切换（支持原生与事件冒泡分发）
+    // 触发点击切换（支持原生与事件冒泡分发，双重触发保证 SPA 路由生效）
     try {
+      const clickEl = target.querySelector('span, a, [class*="title"], [class*="text"]') || target;
       target.click();
-      const clickEl = target.querySelector('span, a') || target;
+      if (clickEl !== target) clickEl.click();
       clickEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      if (clickEl !== target) {
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      }
     } catch (e) {}
 
     const deadline = nowMs() + 4500;
     while (nowMs() < deadline) {
       await sleep(200);
       const a = activeTabEl();
-      if (a && tabMatches(a, want)) {
+      if ((a && tabMatches(a, want)) || (wantTab && getPageActualTabType() === wantTab)) {
         await sleep(200);
         return true;
       }
     }
     await sleep(200);
     const finalA = activeTabEl();
-    return !!(finalA && tabMatches(finalA, want));
+    return !!((finalA && tabMatches(finalA, want)) || (wantTab && getPageActualTabType() === wantTab));
   }
 
   /* ============================ DOM：滚动加载 ============================ */
 
   function findScrollContainer() {
-    const list = ['.feeds-container', '.user-page .feeds-container', '.note-list', '#userPostedFeeds', '#userCollectFeeds', '#userLikeFeeds'];
+    const list = [
+      '.feeds-container',
+      '.user-page .feeds-container',
+      '.note-list',
+      '#userPostedFeeds',
+      '#userCollectFeeds',
+      '#userLikeFeeds',
+      '.user-page',
+      '.main-container',
+      '#app'
+    ];
     for (let i = 0; i < list.length; i++) {
       const el = $(list[i]);
       if (el && el.scrollHeight > el.clientHeight + 60) return el;
@@ -2931,9 +2957,25 @@
 
   function setMode(mode) {
     if (!C.MODES[mode] || state.running) return;
-    if (state.settings.mode === mode) return;
 
     const targetTab = mode === 'unlike' ? 'like' : 'collect';
+    const curActualTab = getPageActualTabType();
+
+    // 智能联动：如果在个人主页且页面当前 Tab 与目标不一致，主动联动切换小红书页面对应的 Tab
+    if (PROFILE_RE.test(location.pathname) && curActualTab !== targetTab) {
+      const targetLabel = C.MODES[mode].tabLabel;
+      ensureTab(targetLabel).then(function () {
+        waitForCards(2500, targetTab).then(function () {
+          if (syncDomCardsToCandidates()) {
+            refreshPageCards();
+            broadcastState();
+          }
+        });
+      }).catch(function () {});
+    }
+
+    if (state.settings.mode === mode) return;
+
     if (targetTab !== currentScannedTabType) {
       beginTabTransition(targetTab);
     }
@@ -2948,19 +2990,6 @@
     if (stackState.open) syncStackListToFilter();
     refreshPageCards();
     broadcastState();
-
-    // 智能联动：如果在个人主页，主动联动切换小红书页面对应的 Tab
-    if (PROFILE_RE.test(location.pathname) && !isOwnNotesPage()) {
-      const targetLabel = C.MODES[mode].tabLabel;
-      ensureTab(targetLabel).then(function () {
-        waitForCards(2500, targetTab).then(function () {
-          if (syncDomCardsToCandidates()) {
-            refreshPageCards();
-            broadcastState();
-          }
-        });
-      }).catch(function () {});
-    }
   }
 
   /* ============================ 挂载页面底部反馈栏与叠卡浮层 ============================ */
@@ -3516,6 +3545,7 @@
     }
     if (onProfile && state.mounted) {
       onUrlChange();
+      syncModeWithActiveTab();
       if (!isOwnNotesPage()) {
         if (syncDomCardsToCandidates()) {
           broadcastState();
