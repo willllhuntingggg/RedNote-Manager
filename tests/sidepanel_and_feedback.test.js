@@ -1468,55 +1468,32 @@ test('叠卡模式快捷键视觉美学：移除破坏圆形关闭按钮与翻�
   assert.ok(styleCode.includes('flex-wrap: nowrap !important;'), '操作栏严禁换行错位');
 });
 
-test('防串仓隔离机制：严格隔离收藏与点赞容器，隐藏卡片与异仓卡片绝不跨仓混入', () => {
-  // 模拟 DOM 结构，页面中同时存在 #userCollectFeeds 与 #userLikeFeeds
-  const collectCards = [
-    { id: 'col1'.padEnd(24, '0'), container: '#userCollectFeeds', visible: true },
-    { id: 'col2'.padEnd(24, '0'), container: '#userCollectFeeds', visible: true },
+test('防串仓隔离机制：切换 Tab 异步加载期严格阻断旧卡片写入新模式', () => {
+  // 模拟从「赞过」切到「收藏」的异步加载过渡阶段
+  const oldLikedCards = [
+    { id: 'like1'.padEnd(24, '0'), title: '点赞笔记 1' },
+    { id: 'like2'.padEnd(24, '0'), title: '点赞笔记 2' },
   ];
-  const likeOnlyCards = [
-    { id: 'like1'.padEnd(24, '0'), container: '#userLikeFeeds', visible: false }, // 隐藏在点赞容器
-    { id: 'like2'.padEnd(24, '0'), container: '#userLikeFeeds', visible: false },
+  const freshCollectCards = [
+    { id: 'col1'.padEnd(24, '0'), title: '收藏笔记 1' },
+    { id: 'col2'.padEnd(24, '0'), title: '收藏笔记 2' },
   ];
 
-  function filterCardsForTab(cards, tab) {
-    return cards.filter(c => {
-      if (tab === 'collect' && c.container.includes('Like')) return false;
-      if (tab === 'like' && c.container.includes('Collect')) return false;
-      if (!c.visible) return false;
-      return true;
-    });
-  }
+  // 1. 切换瞬间：页面依然挂着旧的赞过卡片，旧卡片入黑名单
+  const staleCardsFromPreviousTab = new Set(oldLikedCards.map(c => c.id));
+  
+  // 2. 模拟过渡期采集：旧卡片被 100% 阻断，不能合入收藏缓存
+  const cardsInDomDuringTransition = oldLikedCards;
+  const filteredTransition = cardsInDomDuringTransition.filter(c => !staleCardsFromPreviousTab.has(c.id));
+  assert.strictEqual(filteredTransition.length, 0, '过渡期旧卡片完全被拦截，绝不误入收藏缓存');
 
-  // 1. 在收藏 Tab 下，只有收藏容器中的可见卡片能够进入候选
-  const allCards = collectCards.concat(likeOnlyCards);
-  const scannedInCollect = filterCardsForTab(allCards, 'collect');
-  assert.strictEqual(scannedInCollect.length, 2, '仅收藏卡片被识别');
-  assert.strictEqual(scannedInCollect.some(c => c.id.startsWith('like')), false, '只点赞的笔记绝对不可进入收藏模式');
-
-  // 2. 模拟字重对比逻辑：若所有 Tab 都是 600，绝不误判非当前 Tab 为 active
-  const tabs = [
-    { text: '笔记', fw: 600 },
-    { text: '收藏', fw: 600 },
-    { text: '点赞', fw: 600 },
-  ];
-  function isTabActiveByFw(tab, allTabs) {
-    const fw = tab.fw;
-    if (fw < 600) return false;
-    const siblings = allTabs.filter(t => t !== tab);
-    return siblings.length > 0 && siblings.every(s => s.fw < fw);
-  }
-  assert.strictEqual(isTabActiveByFw(tabs[0], tabs), false, '全部 tab 600 时不应触发字重高亮误判');
-  assert.strictEqual(isTabActiveByFw(tabs[1], tabs), false);
-
-  // 若某一个 Tab 确实比其他更粗 (如 700 vs 400) 则精准识别
-  const tabsWithActive = [
-    { text: '笔记', fw: 400 },
-    { text: '收藏', fw: 700 },
-    { text: '点赞', fw: 400 },
-  ];
-  assert.strictEqual(isTabActiveByFw(tabsWithActive[1], tabsWithActive), true, '显著加粗项正确识别为 active');
-  assert.strictEqual(isTabActiveByFw(tabsWithActive[0], tabsWithActive), false);
+  // 3. 异步接口返回并渲染出新收藏卡片：黑名单识别到新卡片，安全解除
+  const cardsInDomAfterLoad = freshCollectCards;
+  const hasFresh = cardsInDomAfterLoad.some(c => !staleCardsFromPreviousTab.has(c.id));
+  assert.strictEqual(hasFresh, true, '正确检测到当前 Tab 的全新卡片');
+  const filteredLoaded = cardsInDomAfterLoad.filter(c => !staleCardsFromPreviousTab.has(c.id));
+  assert.strictEqual(filteredLoaded.length, 2, '全新收藏卡片正常合入');
+  assert.strictEqual(filteredLoaded.every(c => c.id.startsWith('col')), true);
 });
 
 test('侧边栏与页面通信自愈机制：防 Receiving end does not exist 噪声警报与无感补注', () => {

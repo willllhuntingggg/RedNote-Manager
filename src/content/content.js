@@ -378,71 +378,24 @@
   const LINK_SELECTORS = ['a[href*="/explore/"]', 'a.cover[href]', 'a[href*="/discovery/item/"]'];
   const TITLE_SELECTORS = ['.title span', '.footer .title span', '.title', '.footer .title'];
 
-  function isCardVisible(el) {
-    if (!el) return false;
-    // 1. 检查是否存在隐藏的祖先元素或非激活的 Tab 容器
-    if (el.closest) {
-      if (el.closest('[hidden], [aria-hidden="true"], [style*="display: none"], [style*="display:none"], [style*="visibility: hidden"]')) {
-        return false;
-      }
-      if (el.closest('.tab-content-item:not(.active), .tab-pane:not(.active), .feeds-tab-pane:not(.active)')) {
-        return false;
-      }
-    }
-    // 2. 检查浏览器计算样式与 offsetParent (排除 display:none 的卡片)
-    if (typeof window !== 'undefined' && window.getComputedStyle) {
-      try {
-        if (el.offsetParent === null) {
-          const st = window.getComputedStyle(el);
-          if (st && (st.display === 'none' || st.visibility === 'hidden')) return false;
-        }
-      } catch (e) {}
-    }
-    return true;
-  }
-
-  function cardNodes(forTab) {
-    const tab = forTab || getPageActualTabType();
-    let scope = document;
-    if (tab === 'collect') {
-      const collectContainer = $('#userCollectFeeds') || $('.user-collect .feeds-container') || $('.collect-feeds');
-      if (collectContainer) scope = collectContainer;
-    } else if (tab === 'like') {
-      const likeContainer = $('#userLikeFeeds') || $('.user-like .feeds-container') || $('.like-feeds');
-      if (likeContainer) scope = likeContainer;
-    }
-
+  function cardNodes() {
     const out = [];
-    const filterAndAdd = function (node) {
-      if (!node) return;
-      // 严格排除异仓/反向容器里的卡片，彻底避免跨 Tab 串仓污染
-      if (tab === 'collect' && node.closest && node.closest('#userLikeFeeds, #userPostedFeeds, .user-like, .user-posted')) {
-        return;
-      }
-      if (tab === 'like' && node.closest && node.closest('#userCollectFeeds, #userPostedFeeds, .user-collect, .user-posted')) {
-        return;
-      }
-      // 严格排除处于隐藏 Tab 容器中的卡片
-      if (!isCardVisible(node)) {
-        return;
-      }
-      if (out.indexOf(node) === -1) out.push(node);
-    };
-
     for (let i = 0; i < CARD_SELECTORS.length; i++) {
-      const list = $$(CARD_SELECTORS[i], scope);
+      const list = $$(CARD_SELECTORS[i]);
       for (let j = 0; j < list.length; j++) {
-        filterAndAdd(list[j]);
+        if (out.indexOf(list[j]) === -1) out.push(list[j]);
       }
     }
     if (out.length > 0) return out;
 
     // 强力兜底：通过 /explore/ 链接反向向上寻找卡片容器
-    const links = $$('a[href*="/explore/"]', scope);
+    const links = $$('a[href*="/explore/"]');
     for (let i = 0; i < links.length; i++) {
       const a = links[i];
       const card = (a.closest && a.closest('section, article, [class*="note"], [class*="item"], [class*="card"]')) || a.parentElement;
-      if (card) filterAndAdd(card);
+      if (card && out.indexOf(card) === -1) {
+        out.push(card);
+      }
     }
     return out;
   }
@@ -549,11 +502,11 @@
    * 扫描当前页面可见的笔记卡片。
    * 核心安全保护：若明确处于发布笔记页（自己的原创笔记），绝对不读！
    */
-  function scanCards(forTab) {
+  function scanCards() {
     if (isOwnNotesPage()) return [];
 
     const out = [];
-    cardNodes(forTab).forEach(function (el) {
+    cardNodes().forEach(function (el) {
       const n = noteFromCard(el);
       if (n && !isOwnNote(n)) out.push(n);
     });
@@ -592,7 +545,7 @@
     if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
     const targetList = state.modeCache[targetMode];
 
-    const cards = scanCards(actualTab);
+    const cards = scanCards();
     if (!cards.length) return false;
 
     // 过滤掉前一个 Tab 残留在 DOM 里的旧卡片
@@ -679,17 +632,8 @@
       if (childActive) return true;
     }
     try {
-      const rawFw = window.getComputedStyle(el).fontWeight;
-      const fw = parseInt(rawFw, 10) || (rawFw === 'bold' ? 700 : 400);
-      if (fw >= 600 && el.parentElement) {
-        const siblings = Array.from(el.parentElement.children).filter(function (s) { return s !== el; });
-        const allSiblingsLighter = siblings.length > 0 && siblings.every(function (s) {
-          const sRaw = window.getComputedStyle(s).fontWeight;
-          const sfw = parseInt(sRaw, 10) || (sRaw === 'bold' ? 700 : 400);
-          return sfw < fw;
-        });
-        if (allSiblingsLighter) return true;
-      }
+      const fw = window.getComputedStyle(el).fontWeight;
+      if (parseInt(fw, 10) >= 600 || fw === 'bold') return true;
     } catch (e) {}
     return false;
   }
@@ -802,10 +746,10 @@
   }
 
   /** 切完标签后卡片是异步渲染的，必须等到新 Tab 的非旧卡片出现再算就绪 */
-  async function waitForCards(timeoutMs, forTab) {
+  async function waitForCards(timeoutMs) {
     const end = nowMs() + (timeoutMs || 6000);
     while (nowMs() < end) {
-      const cards = scanCards(forTab);
+      const cards = scanCards();
       const hasFresh = cards.some(function (c) {
         return !staleCardsFromPreviousTab || !staleCardsFromPreviousTab.has(c.id);
       });
@@ -922,7 +866,7 @@
         return 0;
       }
       let added = 0;
-      scanCards(expectedTab).forEach(function (n) {
+      scanCards().forEach(function (n) {
         if (!acc.has(n.id)) {
           acc.set(n.id, n);
           added++;
