@@ -9,37 +9,18 @@
 <body>
   <div class="rn-panel">
     <header class="rn-hdr">
-      <button class="rn-icobtn rn-back-btn" id="rn-btn-back" type="button" title="返回主界面 (Esc)" hidden>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </button>
       <div class="rn-logo" id="rn-hdr-logo">RN</div>
       <div class="rn-titles">
         <h1 class="rn-title" id="rn-title">RedNote Manager</h1>
-        <div class="rn-sub-titles" id="rn-hdr-subs-main">
-          <span class="rn-hint" id="rn-hint">小红书主页</span>
-          <span class="rn-safe-hint">🛡️ 安全保护中</span>
-        </div>
-        <div class="rn-sub-titles" id="rn-hdr-subs-settings" hidden>
-          <span class="rn-hint">运行参数 · 智能打标 · 外观 · 工具</span>
-        </div>
       </div>
       <div class="rn-hdr-actions">
-        <button class="rn-icobtn rn-sponsor-btn" id="rn-btn-sponsor-hdr" type="button" title="请作者喝杯咖啡 ☕">
-          <svg class="rn-cup-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- 随行杯盖 (纯白微浮雕质感) -->
-            <path d="M7 6.5C7 5.67 7.67 5 8.5 5H15.5C16.33 5 17 5.67 17 6.5V7H7V6.5Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="0.8"/>
-            <rect x="5.5" y="7" width="13" height="2.2" rx="1.1" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.6"/>
-            <!-- 杯身 (经典瑞幸深蓝 #1E3A8A) -->
-            <path d="M6.6 9.2L7.8 19.3C7.9 20.3 8.7 21 9.7 21H14.3C15.3 21 16.1 20.3 16.2 19.3L17.4 9.2H6.6Z" fill="#1E3A8A"/>
-            <!-- 杯身浪花弧线 (纯白点缀，呼应咖啡牛奶浪花) -->
-            <path d="M7.1 13.2C8.6 14.3 10.3 14.6 12 14C13.7 13.4 15.4 13.6 16.9 14.3L16.2 19.3C16.1 20.3 15.3 21 14.3 21H9.7C8.7 21 7.9 20.3 7.8 19.3L7.1 13.2Z" fill="#FFFFFF"/>
-            <!-- 中央简约咖啡豆小圆点 -->
-            <circle cx="12" cy="11.4" r="1.1" fill="#FFFFFF"/>
+        <button class="rn-icobtn" id="rn-gear" type="button" title="偏好设置与维护">⚙</button>
+        <button class="rn-icobtn rn-close-btn" id="rn-btn-close" type="button" title="关闭设置 (Esc)" hidden>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
-        <button class="rn-icobtn" id="rn-gear" type="button" title="偏好设置与维护">⚙</button>
       </div>
     </header>
 
@@ -50,12 +31,9 @@
         <div class="rn-mode-banner" id="rn-mode-banner" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
           <div class="rn-mode-info">
             <span class="rn-mode-icon" id="rn-mode-icon">⭐</span>
-            <div class="rn-mode-text-wrap">
-              <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
-              <span class="rn-mode-sub" id="rn-mode-sub">已载入 0 篇笔记 · 跟随网页</span>
-            </div>
+            <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
           </div>
-          <span class="rn-mode-badge" id="rn-mode-badge">0</span>
+          <button class="rn-btn rn-mini rn-mode-scan-btn" id="rn-scan" type="button" title="读取当前页面列表（按住 Shift 点击可清空缓存全新读取）">读取列表</button>
         </div>
 
         <!-- 提示 / 警告 -->
@@ -63,7 +41,6 @@
 
         <!-- 数据统计看板 -->
         <div class="rn-stats">
-          <div class="rn-stat"><b id="rn-s-cand">0</b><span>候选</span></div>
           <div class="rn-stat"><b id="rn-s-sel" class="rn-acc">0</b><span>已勾选</span></div>
           <div class="rn-stat"><b id="rn-s-ok" class="rn-ok">0</b><span>已处理</span></div>
           <div class="rn-stat"><b id="rn-s-fail" class="rn-bad">0</b><span>失败</span></div>
@@ -74,9 +51,7 @@
 
         <!-- 主控制按钮 -->
         <div class="rn-row">
-          <button class="rn-btn" id="rn-scan" type="button" title="读取当前页面列表（按住 Shift 点击可清空缓存全新读取）">① 读取列表</button>
-          <button class="rn-btn rn-primary" id="rn-start" type="button">取消收藏</button>
-          <button class="rn-btn rn-stop" id="rn-stop" type="button" disabled title="仅在批量执行运行中时激活，可随时手动停止">停止</button>
+          <button class="rn-btn rn-primary rn-grow" id="rn-start" type="button">取消收藏</button>
         </div>
 
         <!-- 搜索筛选 -->
@@ -95,8 +70,6 @@
           <button class="rn-btn rn-mini" id="rn-sel-clear" type="button">清空</button>
           <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">✨ AI 分类</button>
           <button class="rn-btn rn-mini" id="rn-btn-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>
-          <span style="flex:1"></span>
-          <span class="rn-selcount" id="rn-sel-count">已选 0</span>
         </div>
 
         <!-- AI 标签胶囊筛选栏（分析后或有缓存标签时展示） -->
@@ -116,9 +89,6 @@
               <span>📋 操作记录</span>
             </div>
             <div class="rn-log-actions">
-              <button class="rn-btn rn-mini rn-log-diag-btn" id="rn-log-diag" type="button" title="一键运行全景诊断并自动复制诊断日志，方便排查">
-                🔍 诊断并复制
-              </button>
               <button class="rn-btn rn-mini rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作（单篇或批量）" disabled>
                 ↩️ 撤销上次
               </button>
@@ -196,7 +166,7 @@
           <div class="rn-row rn-settings-actions">
             <button class="rn-btn rn-mini" id="rn-refresh" type="button" title="清空独立缓存并重新从页面读取">刷新缓存</button>
             <button class="rn-btn rn-mini" id="rn-undo" type="button" title="撤销最近处理的一批笔记">撤销上次</button>
-            <button class="rn-btn rn-mini" id="rn-diag" type="button" title="检测接口与环境状态">运行诊断</button>
+            <button class="rn-btn rn-mini" id="rn-log-diag" type="button" title="一键运行全景诊断并自动复制诊断日志，方便排查">🔍 诊断并复制</button>
             <button class="rn-btn rn-mini rn-btn-danger" id="rn-clear" type="button" title="清空本地已处理记录">清空记录</button>
           </div>
         </div>

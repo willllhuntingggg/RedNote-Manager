@@ -241,22 +241,29 @@ function getFilteredVisible(candidates, query, tagFilter) {
 
 function renderDisconnected(message) {
   lastState = null;
-  $('rn-s-cand').textContent = '–';
-  $('rn-s-sel').textContent = '–';
-  $('rn-s-ok').textContent = '–';
-  $('rn-s-fail').textContent = '–';
-  $('rn-hit').textContent = '0/0';
-  $('rn-sel-count').textContent = '已选 0';
-  $('rn-bar').style.width = '0%';
-  $('rn-start').disabled = true;
-  $('rn-stop').disabled = true;
-  $('rn-scan').disabled = true;
-  $('rn-undo').disabled = true;
-  $('rn-list').innerHTML = '<div class="rn-empty">' + message + '</div>';
+  if ($('rn-s-cand')) $('rn-s-cand').textContent = '–';
+  if ($('rn-s-sel')) $('rn-s-sel').textContent = '–';
+  if ($('rn-s-ok')) $('rn-s-ok').textContent = '–';
+  if ($('rn-s-fail')) $('rn-s-fail').textContent = '–';
+  if ($('rn-hit')) $('rn-hit').textContent = '0/0';
+  if ($('rn-sel-count')) $('rn-sel-count').textContent = '已选 0';
+  if ($('rn-bar')) $('rn-bar').style.width = '0%';
+  if ($('rn-start')) $('rn-start').disabled = true;
+  if ($('rn-stop')) $('rn-stop').disabled = true;
+  if ($('rn-scan')) {
+    $('rn-scan').disabled = true;
+    $('rn-scan').textContent = '读取列表';
+    $('rn-scan').className = 'rn-btn rn-mini rn-mode-scan-btn';
+  }
+  if ($('rn-undo')) $('rn-undo').disabled = true;
+  if ($('rn-log-undo')) $('rn-log-undo').disabled = true;
+  if ($('rn-list')) $('rn-list').innerHTML = '<div class="rn-empty">' + message + '</div>';
 
   const alert = $('rn-alert');
-  alert.innerHTML = message;
-  alert.hidden = false;
+  if (alert) {
+    alert.innerHTML = message;
+    alert.hidden = false;
+  }
 }
 
 function applyAlert(st) {
@@ -322,18 +329,18 @@ function applyState(st) {
 
     if (isOwn) {
       if (bannerTitle) bannerTitle.textContent = '当前模式：我的笔记（受安全保护）';
-      if (bannerSub) bannerSub.textContent = '请在左侧小红书切换至「收藏」或「赞过」';
-      if (bannerBadge) bannerBadge.textContent = '0';
+      if (bannerSub) bannerSub.textContent = '请在小红书切换至「收藏」或「赞过」';
+      if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.textContent = '📝';
     } else if (isUnlike) {
       if (bannerTitle) bannerTitle.textContent = '当前模式：取消点赞';
-      if (bannerSub) bannerSub.textContent = `已载入 ${curCount} 篇点赞笔记 · 跟随网页`;
-      if (bannerBadge) bannerBadge.textContent = String(curCount);
+      if (bannerSub) bannerSub.textContent = '跟随网页';
+      if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.textContent = '❤️';
     } else {
       if (bannerTitle) bannerTitle.textContent = '当前模式：取消收藏';
-      if (bannerSub) bannerSub.textContent = `已载入 ${curCount} 篇收藏笔记 · 跟随网页`;
-      if (bannerBadge) bannerBadge.textContent = String(curCount);
+      if (bannerSub) bannerSub.textContent = '跟随网页';
+      if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.textContent = '⭐';
     }
   }
@@ -352,7 +359,7 @@ function applyState(st) {
   });
 
   const M = C && C.MODES ? C.MODES[st.mode] : null;
-  $('rn-hint').textContent = M ? M.tabLabel : '小红书主页';
+  if ($('rn-hint')) $('rn-hint').textContent = M ? M.tabLabel : '小红书主页';
 
   // 统计看板（已处理的笔记不进入候选与计数）
   const allCandidates = Array.isArray(st.candidates) ? st.candidates : [];
@@ -362,74 +369,89 @@ function applyState(st) {
   const candList = getUnprocessedCandidates(st);
   const candCount = candList.length;
   const selCount = Array.isArray(st.selected) ? st.selected.length : (st.selectedCount || 0);
-  $('rn-s-cand').textContent = String(candCount);
-  if (processedOnPage > 0 && !showProcessedNotes) {
-    $('rn-s-cand').title = '待处理 ' + candCount + ' 篇（页面共读取 ' + allCandidates.length + ' 篇，已隐藏 ' + processedOnPage + ' 篇已处理）';
-  } else {
-    $('rn-s-cand').removeAttribute('title');
+  if ($('rn-s-cand')) {
+    $('rn-s-cand').textContent = String(candCount);
+    if (processedOnPage > 0 && !showProcessedNotes) {
+      $('rn-s-cand').title = '待处理 ' + candCount + ' 篇（页面共读取 ' + allCandidates.length + ' 篇，已隐藏 ' + processedOnPage + ' 篇已处理）';
+    } else {
+      $('rn-s-cand').removeAttribute('title');
+    }
   }
-  $('rn-s-sel').textContent = String(selCount);
-  $('rn-s-ok').textContent = String((st.stats && st.stats.ok) || processedOnPage);
-  $('rn-s-fail').textContent = String(st.stats ? st.stats.fail : 0);
+  if ($('rn-s-sel')) $('rn-s-sel').textContent = String(selCount);
+  if ($('rn-s-ok')) $('rn-s-ok').textContent = String((st.stats && st.stats.ok) || processedOnPage);
+  if ($('rn-s-fail')) $('rn-s-fail').textContent = String(st.stats ? st.stats.fail : 0);
 
   // 进度条
   const total = (st.stats && st.stats.total) || 0;
   const done = (st.stats && (st.stats.ok + st.stats.fail)) || 0;
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-  $('rn-bar').style.width = pct + '%';
+  if ($('rn-bar')) $('rn-bar').style.width = pct + '%';
 
   // 控制按钮
   const startBtn = $('rn-start');
   const stopBtn = $('rn-stop');
   const scanBtn = $('rn-scan');
-  const undoBtn = $('rn-undo');
 
   const isScanning = !!st.scanning;
+  const isBusy = isRunning || isScanning;
 
-  startBtn.disabled = isRunning || isScanning || !candCount || !selCount;
-  stopBtn.disabled = !isRunning && !isScanning;
-  scanBtn.disabled = isRunning || isScanning;
-
-  if (isScanning) {
-    scanBtn.textContent = '正在读取…';
-  } else {
-    scanBtn.textContent = '① 读取列表';
+  if (startBtn) {
+    startBtn.disabled = isRunning || isScanning || !candCount || !selCount;
+  }
+  if (stopBtn) {
+    stopBtn.disabled = !isBusy;
   }
 
-  // 动态更新两处撤销按钮（设置抽屉内 + 底部操作记录栏）
+  // 读取列表与停止按钮双态合一（位于当前模式横幅右侧）
+  if (scanBtn) {
+    scanBtn.disabled = false;
+    if (isBusy) {
+      scanBtn.textContent = '⏹ 停止';
+      scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
+      scanBtn.title = '点击停止当前操作';
+    } else {
+      scanBtn.textContent = '读取列表';
+      scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
+      scanBtn.title = '读取当前页面列表（按住 Shift 点击可清空缓存全新读取）';
+    }
+  }
+
+  // 动态更新撤销按钮（设置中 + 底部操作记录栏，智能匹配 Mac ⌘Z 与 Windows Ctrl+Z）
   const undoBtns = [$('rn-undo'), $('rn-log-undo')].filter(Boolean);
   const lastUndo = st.lastUndo;
+  const isMac = typeof navigator !== 'undefined' && (/Mac|iPhone|iPod|iPad/i.test(navigator.platform) || /Macintosh/i.test(navigator.userAgent));
+  const undoKeyLabel = isMac ? '⌘Z' : 'Ctrl+Z';
+
   undoBtns.forEach(function (btn) {
     if (isRunning || isScanning) {
       btn.disabled = true;
     } else if (lastUndo && lastUndo.canUndo) {
       btn.disabled = false;
       if (lastUndo.type === 'single') {
-        btn.textContent = '↩️ 撤销单篇';
-        btn.title = '撤销最近划走/处理的单篇笔记：' + (lastUndo.title || lastUndo.noteId);
+        btn.textContent = '↩️ 撤销单篇 (' + undoKeyLabel + ')';
+        btn.title = '撤销最近划走/处理的单篇笔记：' + (lastUndo.title || lastUndo.noteId) + ' (' + undoKeyLabel + ')';
       } else {
-        btn.textContent = '↩️ 撤销上次 (' + lastUndo.count + '篇)';
-        btn.title = '撤销最近批量处理的 ' + lastUndo.count + ' 篇笔记';
+        btn.textContent = '↩️ 撤销上次 ' + lastUndo.count + '篇 (' + undoKeyLabel + ')';
+        btn.title = '撤销最近批量处理的 ' + lastUndo.count + ' 篇笔记 (' + undoKeyLabel + ')';
       }
     } else {
       btn.disabled = true;
-      btn.textContent = '↩️ 撤销上次';
-      btn.title = '当前没有可撤销的操作记录';
+      btn.textContent = '↩️ 撤销上次 (' + undoKeyLabel + ')';
+      btn.title = '当前没有可撤销的操作记录 (' + undoKeyLabel + ')';
     }
   });
 
   const actionVerb = st.mode === 'unlike' ? '取消点赞' : '取消收藏';
-  if (isScanning) {
-    const planned = Math.min(selCount, s.maxPerRun || 30);
-    startBtn.textContent = selCount ? (actionVerb + '（' + planned + ' 篇）') : actionVerb;
-    stopBtn.title = '点击即可随时停止当前列表扫描';
-  } else if (isRunning) {
-    startBtn.textContent = '正在' + actionVerb + '…';
-    stopBtn.title = '点击即可安全停止当前批量操作';
-  } else {
-    const planned = Math.min(selCount, s.maxPerRun || 30);
-    startBtn.textContent = selCount ? (actionVerb + '（' + planned + ' 篇）') : actionVerb;
-    stopBtn.title = '仅在批量执行运行中时激活，可随时手动停止';
+  if (startBtn) {
+    if (isScanning) {
+      const planned = Math.min(selCount, s.maxPerRun || 30);
+      startBtn.textContent = selCount ? (actionVerb + '（' + planned + ' 篇）') : actionVerb;
+    } else if (isRunning) {
+      startBtn.textContent = '正在' + actionVerb + '…';
+    } else {
+      const planned = Math.min(selCount, s.maxPerRun || 30);
+      startBtn.textContent = selCount ? (actionVerb + '（' + planned + ' 篇）') : actionVerb;
+    }
   }
 
   ['rn-sel-all', 'rn-sel-invert', 'rn-sel-clear', 'rn-btn-stack'].forEach(function (id) {
@@ -464,11 +486,14 @@ function applyState(st) {
   } else if (processedOnPage > 0 && !showProcessedNotes) {
     selText += ' · 隐藏 ' + processedOnPage + ' 篇已处理';
   }
-  $('rn-sel-count').textContent = selText;
-  if (processedOnPage > 0) {
-    $('rn-sel-count').title = '点击可在「仅看待处理」与「显示全部（含已处理）」之间切换';
-  } else {
-    $('rn-sel-count').removeAttribute('title');
+  const selCountEl = $('rn-sel-count');
+  if (selCountEl) {
+    selCountEl.textContent = selText;
+    if (processedOnPage > 0) {
+      selCountEl.title = '点击可在「仅看待处理」与「显示全部（含已处理）」之间切换';
+    } else {
+      selCountEl.removeAttribute('title');
+    }
   }
 
   // 渲染 AI 标签胶囊栏
@@ -739,35 +764,50 @@ function closeSponsorModal() {
   }
 }
 
-/* ============================ 视图切换引擎 (Option A: 全屏平滑切页) ============================ */
+/* ============================ 视图切换引擎 (平滑横向滑入/滑出收起) ============================ */
 
 function rnSetView(viewName) {
   const isSettings = viewName === 'settings';
   settingsOpen = isSettings;
+  const bodyEl = document.querySelector('.rn-body');
   const mainView = $('rn-main-view');
   const settingsView = $('rn-settings');
-  const backBtn = $('rn-btn-back');
-  const logoEl = $('rn-hdr-logo');
-  const titleEl = $('rn-title');
-  const subMain = $('rn-hdr-subs-main');
-  const subSettings = $('rn-hdr-subs-settings');
+  const closeBtn = $('rn-btn-close') || $('rn-btn-back');
   const gearBtn = $('rn-gear');
 
-  if (mainView) mainView.hidden = isSettings;
-  if (settingsView) settingsView.hidden = !isSettings;
-  if (backBtn) backBtn.hidden = !isSettings;
-  if (logoEl) logoEl.hidden = isSettings;
-  if (gearBtn) {
-    gearBtn.hidden = isSettings;
-    gearBtn.classList.toggle('rn-active', isSettings);
-  }
+  if (isSettings) {
+    if (settingsView) {
+      settingsView.hidden = false;
+      settingsView.scrollTop = 0;
+    }
+    if (bodyEl) {
+      // 触发重绘以确保平滑向左滑入生效
+      void bodyEl.offsetWidth;
+      bodyEl.classList.add('rn-settings-open');
+    }
+    if (gearBtn) {
+      gearBtn.hidden = true;
+      gearBtn.classList.add('rn-active');
+    }
+    if (closeBtn) closeBtn.hidden = false;
+  } else {
+    if (bodyEl) bodyEl.classList.remove('rn-settings-open');
+    if (gearBtn) {
+      gearBtn.hidden = false;
+      gearBtn.classList.remove('rn-active');
+    }
+    if (closeBtn) closeBtn.hidden = true;
 
-  if (titleEl) titleEl.textContent = isSettings ? '偏好设置与维护' : 'RedNote Manager';
-  if (subMain) subMain.hidden = isSettings;
-  if (subSettings) subSettings.hidden = !isSettings;
-
-  if (isSettings && settingsView) {
-    settingsView.scrollTop = 0;
+    // 平滑向右滑出收起
+    if (settingsView) {
+      settingsView.classList.add('rn-animating');
+      setTimeout(function () {
+        if (!settingsOpen && settingsView) {
+          settingsView.hidden = true;
+          settingsView.classList.remove('rn-animating');
+        }
+      }, 290);
+    }
   }
 }
 
@@ -801,24 +841,38 @@ function bindEvents() {
     });
   });
 
-  // 操作按钮
-  $('rn-scan').addEventListener('click', async function (ev) {
-    if (ev && ev.shiftKey) {
-      await sendToTab('RN_REFRESH_CACHE');
-    }
-    await sendToTab('RN_ACTION', { action: 'scan' });
-    requestState();
-  });
+  // 读取列表与停止按钮双态事件
+  const scanBtn = $('rn-scan');
+  if (scanBtn) {
+    scanBtn.addEventListener('click', async function (ev) {
+      const isBusy = (lastState && lastState.running) || (lastState && lastState.scanning);
+      if (isBusy) {
+        await sendToTab('RN_ACTION', { action: 'stop' });
+      } else {
+        if (ev && ev.shiftKey) {
+          await sendToTab('RN_REFRESH_CACHE');
+        }
+        await sendToTab('RN_ACTION', { action: 'scan' });
+      }
+      requestState();
+    });
+  }
 
-  $('rn-start').addEventListener('click', async function () {
-    await sendToTab('RN_ACTION', { action: 'start' });
-    requestState();
-  });
+  const startBtn = $('rn-start');
+  if (startBtn) {
+    startBtn.addEventListener('click', async function () {
+      await sendToTab('RN_ACTION', { action: 'start' });
+      requestState();
+    });
+  }
 
-  $('rn-stop').addEventListener('click', async function () {
-    await sendToTab('RN_ACTION', { action: 'stop' });
-    requestState();
-  });
+  const stopBtn = $('rn-stop');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', async function () {
+      await sendToTab('RN_ACTION', { action: 'stop' });
+      requestState();
+    });
+  }
 
   $('rn-undo').addEventListener('click', async function () {
     await sendToTab('RN_ACTION', { action: 'undo' });
@@ -970,7 +1024,8 @@ function bindEvents() {
     } else if (processedOnPage > 0 && !showProcessedNotes) {
       selText += ' · 隐藏 ' + processedOnPage + ' 篇已处理';
     }
-    $('rn-sel-count').textContent = selText;
+    const selCountEl = $('rn-sel-count');
+    if (selCountEl) selCountEl.textContent = selText;
 
     // 立即在下方展示胶囊栏与搜索结果
     renderTagChips(candList);
@@ -1216,19 +1271,22 @@ function bindEvents() {
   });
 
   // 点击已选统计可快捷切换显示/隐藏已处理笔记
-  $('rn-sel-count').addEventListener('click', function () {
-    if (!lastState) return;
-    const allCandidates = Array.isArray(lastState.candidates) ? lastState.candidates : [];
-    const mode = lastState.mode || 'uncollect';
-    const processedSet = new Set((lastState.processed && lastState.processed[mode]) || []);
-    const processedOnPage = allCandidates.filter(function (n) { return processedSet.has(n.id); }).length;
-    if (processedOnPage > 0) {
-      showProcessedNotes = !showProcessedNotes;
-      applyState(lastState);
-    }
-  });
+  const selCountBtn = $('rn-sel-count');
+  if (selCountBtn) {
+    selCountBtn.addEventListener('click', function () {
+      if (!lastState) return;
+      const allCandidates = Array.isArray(lastState.candidates) ? lastState.candidates : [];
+      const mode = lastState.mode || 'uncollect';
+      const processedSet = new Set((lastState.processed && lastState.processed[mode]) || []);
+      const processedOnPage = allCandidates.filter(function (n) { return processedSet.has(n.id); }).length;
+      if (processedOnPage > 0) {
+        showProcessedNotes = !showProcessedNotes;
+        applyState(lastState);
+      }
+    });
+  }
 
-  // 设置面板切换 (平滑切至全屏设置视图)
+  // 设置面板切换 (平滑向左滑入)
   const gearBtn = $('rn-gear');
   if (gearBtn) {
     gearBtn.addEventListener('click', function () {
@@ -1236,10 +1294,10 @@ function bindEvents() {
     });
   }
 
-  // 返回主视图按钮
-  const backBtn = $('rn-btn-back');
-  if (backBtn) {
-    backBtn.addEventListener('click', function () {
+  // 关闭/返回主视图按钮 (平滑向右滑出收起)
+  const closeBtn = $('rn-btn-close') || $('rn-btn-back');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function () {
       rnSetView('main');
     });
   }
@@ -1420,6 +1478,17 @@ function bindEvents() {
         closeSponsorModal();
       } else if (settingsOpen) {
         rnSetView('main');
+      }
+    }
+
+    // 智能快捷键撤销 (Mac: Cmd+Z, Windows/Linux: Ctrl+Z)
+    const isMac = typeof navigator !== 'undefined' && (/Mac|iPhone|iPod|iPad/i.test(navigator.platform) || /Macintosh/i.test(navigator.userAgent));
+    const isUndoKey = (isMac ? ev.metaKey : ev.ctrlKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z');
+    if (isUndoKey) {
+      const activeTag = document.activeElement ? document.activeElement.tagName : '';
+      if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA') {
+        ev.preventDefault();
+        sendToTab('RN_ACTION', { action: 'undo' }).then(requestState);
       }
     }
   });

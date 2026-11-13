@@ -1763,7 +1763,9 @@
           executeStackAction(state.settings.mode);
           return;
         }
-        if (ev.key === 'z' || ev.key === 'Z') {
+        const isMac = typeof navigator !== 'undefined' && (/Mac|iPhone|iPod|iPad/i.test(navigator.platform) || /Macintosh/i.test(navigator.userAgent));
+        const isUndoKey = (isMac ? ev.metaKey : ev.ctrlKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z');
+        if (isUndoKey) {
           ev.preventDefault();
           undoRun({ undoType: 'single', mode: state.settings.mode });
           return;
@@ -3274,6 +3276,9 @@
     root.appendChild(filterPill);
 
     // 3. 叠卡速览交互模态框
+    const isMac = typeof navigator !== 'undefined' && (/Mac|iPhone|iPod|iPad/i.test(navigator.platform) || /Macintosh/i.test(navigator.userAgent));
+    const undoKeyLabel = isMac ? '⌘Z' : 'Ctrl+Z';
+
     const stackOverlay = document.createElement('div');
     stackOverlay.className = 'rn-stack-overlay';
     stackOverlay.id = 'rn-stack-overlay';
@@ -3285,7 +3290,7 @@
       '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
       '    </div>',
       '    <div class="rn-stack-header-actions">',
-      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: Z)" disabled>↩️ 撤销刚才</button>',
+      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: ' + undoKeyLabel + ')" disabled>↩️ 撤销刚才</button>',
       '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
       '    </div>',
       '  </div>',
@@ -3338,7 +3343,7 @@
       '  <div class="rn-stack-tips">',
       '    <span><kbd>Space</kbd> 取消操作</span>',
       '    <span><kbd>←</kbd> <kbd>→</kbd> 翻页</span>',
-      '    <span><kbd>Z</kbd> 撤销</span>',
+      '    <span><kbd>' + undoKeyLabel + '</kbd> 撤销</span>',
       '    <span><kbd>Esc</kbd> 关闭</span>',
       '  </div>',
       '</div>',

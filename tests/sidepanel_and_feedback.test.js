@@ -1393,9 +1393,8 @@ test('微信赞赏支持体系：资源存在且多触点组件结构完整', ()
   const stat = fs.statSync(sponsorImgPath);
   assert.ok(stat.size > 0 && stat.size < 150 * 1024, '赞赏码图片应经过压缩且体积小于 150KB');
 
-  // 2. 验证 sidepanel.html 包含了所有触点与弹窗
+  // 2. 验证 sidepanel.html 包含了触点与弹窗（顶栏咖啡按用户需求收敛至设置面板，保持顶栏纯净）
   const htmlContent = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.html'), 'utf8');
-  assert.ok(htmlContent.includes('id="rn-btn-sponsor-hdr"'), 'Header 触点按钮必须存在');
   assert.ok(htmlContent.includes('id="rn-btn-sponsor-settings"'), '设置面板触点按钮必须存在');
   assert.ok(htmlContent.includes('id="rn-sponsor-modal"'), '赞赏弹窗必须存在');
   assert.ok(htmlContent.includes('id="rn-sponsor-close"'), '弹窗关闭按钮必须存在');
@@ -1454,8 +1453,9 @@ test('叠卡模式快捷键视觉美学：移除破坏圆形关闭按钮与翻�
   assert.ok(contentCode.includes('class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×<'), '关闭按钮保持纯粹简洁的 × 字符');
   assert.ok(!contentCode.includes('>× <kbd class="rn-stack-nav-kbd">Esc</kbd><'), '关闭按钮内禁止内嵌 Esc 徽标导致变形');
 
-  // 2. 撤销与翻页按钮不臃肿塞键帽，保持设计感
-  assert.ok(contentCode.includes('class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: Z)" disabled>↩️ 撤销刚才</button>'), '撤销按钮文案整洁自然');
+  // 2. 撤销与翻页按钮不臃肿塞键帽，保持设计感，且智能自适应系统快捷键（Mac ⌘Z / Win Ctrl+Z）
+  assert.ok(contentCode.includes('class="rn-stack-header-undo" id="rn-stack-undo" type="button"'), '撤销按钮文案整洁自然');
+  assert.ok(contentCode.includes('undoKeyLabel'), '撤销快捷键自适应系统架构');
   assert.ok(contentCode.includes('<span>⬅</span> 上一个'), '上一个按钮文案整洁自然');
   assert.ok(contentCode.includes('下一个 <span>➡</span>'), '下一个按钮文案整洁自然');
 
@@ -1463,7 +1463,7 @@ test('叠卡模式快捷键视觉美学：移除破坏圆形关闭按钮与翻�
   assert.ok(contentCode.includes('class="rn-stack-tips"'), '必须包含底部独立快捷键栏');
   assert.ok(contentCode.includes('<kbd>Space</kbd> 取消操作'), '提示栏明确指明 Space 快捷键');
   assert.ok(contentCode.includes('<kbd>←</kbd> <kbd>→</kbd> 翻页'), '提示栏明确指明方向键翻页');
-  assert.ok(contentCode.includes('<kbd>Z</kbd> 撤销'), '提示栏明确指明 Z 撤销');
+  assert.ok(contentCode.includes('undoKeyLabel'), '提示栏自适应系统撤销快捷键');
   assert.ok(contentCode.includes('<kbd>Esc</kbd> 关闭'), '提示栏明确指明 Esc 关闭');
 
   assert.ok(styleCode.includes('.rn-stack-tips'), 'style.js 必须包含 rn-stack-tips 样式定义');
@@ -2252,10 +2252,10 @@ test('模式指示条状态化与静默熔断机制：废除超时开闸吞噬�
   const sidepanelJs = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.js'), 'utf8');
   const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
 
-  // 1. UI 架构检测：已移除双可点击 Tab，全面升级为模式状态条
+  // 1. UI 架构检测：已移除双可点击 Tab，全面升级为模式状态条与右侧操作按钮
   assert.ok(sidepanelHtml.includes('class="rn-mode-banner"'), 'HTML 必须包含 rn-mode-banner 模式指示条');
   assert.ok(sidepanelHtml.includes('id="rn-mode-title"'), '指示条必须包含标题容器');
-  assert.ok(sidepanelHtml.includes('id="rn-mode-badge"'), '指示条必须包含计数角标');
+  assert.ok(sidepanelHtml.includes('id="rn-scan"'), '指示条整合读取列表/停止双态操作按钮');
   assert.ok(sidepanelJs.includes("const modeBanner = $('rn-mode-banner')"), 'JS 必须动态驱动模式指示条渲染');
 
   // 2. 底层数据防护检测：坚决废除旧代码中 1500ms 超时强制开闸并误吞旧卡片的漏洞
@@ -2834,17 +2834,17 @@ test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支
   assert.strictEqual(mockResolveEffectiveTheme(undefined, true), 'dark', '未定义时默认 auto，随系统深色解析为 dark');
 });
 
-test('偏好设置全屏平滑切页交互架构 (Option A: View Switcher 杜绝数据面板挤压)', () => {
-  // 1. 验证 HTML 结构：主视图与偏好设置视图平级隔离，并具备专属导航头元素
+test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收起，手写体顶栏，零冗余信息)', () => {
+  // 1. 验证 HTML 结构：纯净手写体顶栏 + 右侧关闭按钮 + 双视图容器
   const htmlPath = path.join(__dirname, '../src/sidepanel/sidepanel.html');
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
-  // 顶栏元素
-  assert.strictEqual(htmlContent.includes('id="rn-btn-back"'), true, '侧边栏顶栏包含返回主界面按钮 #rn-btn-back');
-  assert.strictEqual(htmlContent.includes('id="rn-hdr-logo"'), true, '顶栏 Logo 具备独立 ID 用于切页控制');
-  assert.strictEqual(htmlContent.includes('id="rn-title"'), true, '顶栏主标题具备 ID 用于切页动态展示');
-  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-main"'), true, '包含主工作区副标题组 #rn-hdr-subs-main');
-  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-settings"'), true, '包含设置页面专属副标题组 #rn-hdr-subs-settings');
+  // 顶栏元素：仅保留 Logo 和插件名称，冗余副标题彻底移除，右侧关闭按钮替换咖啡位置
+  assert.strictEqual(htmlContent.includes('id="rn-btn-close"'), true, '顶栏右侧包含关闭设置按钮 #rn-btn-close');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-logo"'), true, '顶栏 Logo 具备独立 ID');
+  assert.strictEqual(htmlContent.includes('id="rn-title"'), true, '顶栏主标题具备 ID');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-main"'), false, '彻底移除主工作区冗余副标题');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-settings"'), false, '彻底移除设置区冗余副标题');
   assert.strictEqual(htmlContent.includes('id="rn-gear"'), true, '顶栏保留偏好设置入口齿轮按钮');
 
   // 视图平级隔离结构
@@ -2854,41 +2854,45 @@ test('偏好设置全屏平滑切页交互架构 (Option A: View Switcher 杜绝
   assert.strictEqual(htmlContent.includes('class="rn-view rn-view-settings"'), true, '设置视图带有 .rn-view 与 .rn-view-settings 类');
   assert.strictEqual(htmlContent.includes('class="rn-settings-card"'), true, '设置项以卡片式进行分组 (.rn-settings-card)');
 
-  // 2. 验证 CSS 样式：零推挤排版与平滑淡入动画
+  // 2. 验证 CSS 样式：手写体标题 + 横向滑动进入收起动画
   const cssPath = path.join(__dirname, '../src/sidepanel/sidepanel.css');
   const cssContent = fs.readFileSync(cssPath, 'utf8');
 
   assert.strictEqual(cssContent.includes('.rn-body {'), true, '包含 .rn-body 样式');
   assert.strictEqual(cssContent.includes('overflow: hidden'), true, '.rn-body 采用视口级 overflow: hidden');
-  assert.strictEqual(cssContent.includes('.rn-view {'), true, '包含 .rn-view 统一视图容器定义');
-  assert.strictEqual(cssContent.includes('rnViewFadeIn'), true, '包含平滑切页动画 rnViewFadeIn');
-  assert.strictEqual(cssContent.includes('.rn-back-btn[hidden]'), true, '包含返回按钮与Logo隐藏控制');
-  assert.strictEqual(cssContent.includes('.rn-settings-card'), true, '包含设置卡片式卡片化样式');
+  assert.strictEqual(cssContent.includes('.rn-view-main {'), true, '包含 .rn-view-main 容器');
+  assert.strictEqual(cssContent.includes('.rn-view-settings {'), true, '包含 .rn-view-settings 容器');
+  assert.strictEqual(cssContent.includes('.rn-settings-open .rn-view-settings'), true, '包含向左滑入打开样式定义');
+  assert.strictEqual(cssContent.includes('translateX(100%)'), true, '默认位于右侧 100% 准备向左滑入');
+  assert.strictEqual(cssContent.includes('cursive'), true, '标题采用优雅手写字体族 cursive');
 
-  // 3. 验证 JS 视图切换引擎逻辑
+  // 3. 验证 JS 视图切换引擎逻辑与系统级快捷键支持
   const jsPath = path.join(__dirname, '../src/sidepanel/sidepanel.js');
   const jsContent = fs.readFileSync(jsPath, 'utf8');
 
   assert.strictEqual(jsContent.includes('function rnSetView'), true, 'JS 包含核心视图切换引擎 rnSetView');
   assert.strictEqual(jsContent.includes("rnSetView('settings')"), true, '齿轮按钮与无Key拦截时调用 rnSetView("settings")');
-  assert.strictEqual(jsContent.includes("rnSetView('main')"), true, '返回按钮与 Esc 键触发 rnSetView("main")');
+  assert.strictEqual(jsContent.includes("rnSetView('main')"), true, '关闭按钮与 Esc 键触发 rnSetView("main")');
+  assert.strictEqual(jsContent.includes('isMac ? ev.metaKey : ev.ctrlKey'), true, '支持智能判断 Mac ⌘Z 与 Windows Ctrl+Z 快捷键撤销');
 
   // 4. 模拟 DOM 运行环境，严密测试视图切换状态机
+  const mockBodyClassList = new Set();
+  const mockGearClassList = new Set();
   const mockElements = {
     'rn-main-view': { hidden: false },
-    'rn-settings': { hidden: true, scrollTop: 120 },
-    'rn-btn-back': { hidden: true },
+    'rn-settings': { hidden: true, scrollTop: 120, classList: new Set() },
+    'rn-btn-close': { hidden: true },
     'rn-hdr-logo': { hidden: false },
     'rn-title': { textContent: 'RedNote Manager' },
-    'rn-hdr-subs-main': { hidden: false },
-    'rn-hdr-subs-settings': { hidden: true },
     'rn-gear': {
       hidden: false,
       classList: {
-        classes: new Set(),
+        classes: mockGearClassList,
+        add(cls) { mockGearClassList.add(cls); },
+        remove(cls) { mockGearClassList.delete(cls); },
         toggle(cls, force) {
-          if (force) this.classes.add(cls);
-          else this.classes.delete(cls);
+          if (force) mockGearClassList.add(cls);
+          else mockGearClassList.delete(cls);
         }
       }
     }
@@ -2902,67 +2906,60 @@ test('偏好设置全屏平滑切页交互架构 (Option A: View Switcher 杜绝
   function mockRnSetView(viewName) {
     const isSettings = viewName === 'settings';
     mockSettingsOpen = isSettings;
-    const mainView = mock$('rn-main-view');
     const settingsView = mock$('rn-settings');
-    const backBtn = mock$('rn-btn-back');
-    const logoEl = mock$('rn-hdr-logo');
-    const titleEl = mock$('rn-title');
-    const subMain = mock$('rn-hdr-subs-main');
-    const subSettings = mock$('rn-hdr-subs-settings');
+    const closeBtn = mock$('rn-btn-close');
     const gearBtn = mock$('rn-gear');
 
-    if (mainView) mainView.hidden = isSettings;
-    if (settingsView) settingsView.hidden = !isSettings;
-    if (backBtn) backBtn.hidden = !isSettings;
-    if (logoEl) logoEl.hidden = isSettings;
-    if (gearBtn) {
-      gearBtn.hidden = isSettings;
-      gearBtn.classList.toggle('rn-active', isSettings);
-    }
-
-    if (titleEl) titleEl.textContent = isSettings ? '偏好设置与维护' : 'RedNote Manager';
-    if (subMain) subMain.hidden = isSettings;
-    if (subSettings) subSettings.hidden = !isSettings;
-
-    if (isSettings && settingsView) {
-      settingsView.scrollTop = 0;
+    if (isSettings) {
+      if (settingsView) {
+        settingsView.hidden = false;
+        settingsView.scrollTop = 0;
+      }
+      mockBodyClassList.add('rn-settings-open');
+      if (gearBtn) {
+        gearBtn.hidden = true;
+        gearBtn.classList.add('rn-active');
+      }
+      if (closeBtn) closeBtn.hidden = false;
+    } else {
+      mockBodyClassList.delete('rn-settings-open');
+      if (gearBtn) {
+        gearBtn.hidden = false;
+        gearBtn.classList.remove('rn-active');
+      }
+      if (closeBtn) closeBtn.hidden = true;
+      if (settingsView) {
+        settingsView.hidden = true;
+      }
     }
   }
 
   // 初始状态检查
   assert.strictEqual(mockElements['rn-main-view'].hidden, false, '初始状态主工作区可见');
   assert.strictEqual(mockElements['rn-settings'].hidden, true, '初始状态偏好设置隐藏');
-  assert.strictEqual(mockElements['rn-btn-back'].hidden, true, '初始状态返回按钮隐藏');
+  assert.strictEqual(mockElements['rn-btn-close'].hidden, true, '初始状态关闭按钮隐藏');
   assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, '初始状态Logo展示');
   assert.strictEqual(mockElements['rn-gear'].hidden, false, '初始状态齿轮展示');
-  assert.strictEqual(mockElements['rn-title'].textContent, 'RedNote Manager', '初始标题为 RedNote Manager');
-  assert.strictEqual(mockElements['rn-hdr-subs-main'].hidden, false, '初始主副标题可见');
-  assert.strictEqual(mockElements['rn-hdr-subs-settings'].hidden, true, '初始设置副标题隐藏');
+  assert.strictEqual(mockElements['rn-title'].textContent, 'RedNote Manager', '初始标题为手写体 RedNote Manager');
 
-  // 执行切换到偏好设置视图
+  // 执行切换到偏好设置视图 (向左滑入)
   mockRnSetView('settings');
   assert.strictEqual(mockSettingsOpen, true);
-  assert.strictEqual(mockElements['rn-main-view'].hidden, true, '切到设置后主工作区被隐藏（不占位不挤压）');
-  assert.strictEqual(mockElements['rn-settings'].hidden, false, '切到设置后设置页完整独占展示');
+  assert.strictEqual(mockBodyClassList.has('rn-settings-open'), true, '进入设置时注入 rn-settings-open 触发向左滑入动画');
+  assert.strictEqual(mockElements['rn-settings'].hidden, false, '设置视图激活可见');
   assert.strictEqual(mockElements['rn-settings'].scrollTop, 0, '切入时自动回到顶部');
-  assert.strictEqual(mockElements['rn-btn-back'].hidden, false, '返回按钮显示');
-  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, true, 'Logo 隐去以留出返回箭头空间');
-  assert.strictEqual(mockElements['rn-gear'].hidden, true, '齿轮隐去');
-  assert.strictEqual(mockElements['rn-title'].textContent, '偏好设置与维护', '顶栏标题更新为偏好设置与维护');
-  assert.strictEqual(mockElements['rn-hdr-subs-main'].hidden, true, '主副标题隐藏');
-  assert.strictEqual(mockElements['rn-hdr-subs-settings'].hidden, false, '展示设置专属功能副标题');
+  assert.strictEqual(mockElements['rn-btn-close'].hidden, false, '关闭按钮显现于顶栏右侧');
+  assert.strictEqual(mockElements['rn-gear'].hidden, true, '齿轮按钮隐藏');
+  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 始终常驻保持品牌纯净');
 
-  // 执行返回主视图
+  // 执行返回主视图 (原路向右收起)
   mockRnSetView('main');
   assert.strictEqual(mockSettingsOpen, false);
-  assert.strictEqual(mockElements['rn-main-view'].hidden, false, '返回后主工作区恢复可见');
+  assert.strictEqual(mockBodyClassList.has('rn-settings-open'), false, '退出设置时移除类名，原路向右收起滑出');
   assert.strictEqual(mockElements['rn-settings'].hidden, true, '偏好设置完全隐藏');
-  assert.strictEqual(mockElements['rn-btn-back'].hidden, true, '返回按钮隐藏');
-  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 重新恢复');
-  assert.strictEqual(mockElements['rn-gear'].hidden, false, '齿轮按钮重新恢复');
-  assert.strictEqual(mockElements['rn-title'].textContent, 'RedNote Manager', '顶栏标题恢复为 RedNote Manager');
-  assert.strictEqual(mockElements['rn-hdr-subs-main'].hidden, false, '主副标题恢复');
-  assert.strictEqual(mockElements['rn-hdr-subs-settings'].hidden, true, '设置副标题隐藏');
+  assert.strictEqual(mockElements['rn-btn-close'].hidden, true, '关闭按钮隐藏');
+  assert.strictEqual(mockElements['rn-gear'].hidden, false, '齿轮按钮重新恢复展示');
+  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 恢复且始终呈现');
 });
 
 

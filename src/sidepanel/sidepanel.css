@@ -223,6 +223,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.rn-close-btn,
 .rn-back-btn {
   font-size: 14px;
   display: inline-flex;
@@ -231,10 +232,12 @@ body {
   cursor: pointer;
 }
 
+.rn-close-btn svg,
 .rn-back-btn svg {
   display: block;
 }
 
+.rn-close-btn[hidden],
 .rn-back-btn[hidden],
 #rn-hdr-logo[hidden],
 #rn-gear[hidden] {
@@ -262,22 +265,14 @@ body {
 }
 
 .rn-title {
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
+  font-family: 'Caveat', 'Snell Roundhand', 'Dancing Script', 'Brush Script MT', 'Segoe Script', cursive;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   color: var(--text-main);
-  line-height: 1.2;
+  line-height: 1.1;
+  margin: 0;
 }
-
-.rn-sub-titles {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 3px;
-}
-
-.rn-hint {
-  font-size: 11px;
   color: var(--text-muted);
   font-weight: 400;
 }
@@ -329,10 +324,11 @@ body {
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  width: 100%;
 }
 
-/* 独立视图容器 (Main View & Settings View) */
-.rn-view {
+/* 主视图容器 */
+.rn-view-main {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
@@ -344,22 +340,50 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   box-sizing: border-box;
-  animation: rnViewFadeIn 0.16s ease-out;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  transform: translateX(0);
+  opacity: 1;
 }
 
-.rn-view[hidden] {
+/* 偏好设置视图 (独立覆盖层，默认位于右侧 100%，点击设置向左滑入，点击关闭原路向右收起) */
+.rn-view-settings {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  background: var(--bg);
+  z-index: 10;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+
+.rn-view-settings[hidden]:not(.rn-animating) {
   display: none !important;
 }
 
-@keyframes rnViewFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* 设置面板打开态 (向左滑入生效) */
+.rn-settings-open .rn-view-settings {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rn-settings-open .rn-view-main {
+  transform: translateX(-18%);
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 /* 模式指示条 (跟随小红书页面) */
@@ -371,7 +395,7 @@ body {
   background: var(--banner-bg);
   border: 1px solid var(--banner-border);
   border-radius: 9px;
-  padding: 8px 12px;
+  padding: 7px 10px;
   transition: all 0.2s ease;
 }
 
@@ -387,17 +411,43 @@ body {
   line-height: 1;
 }
 
-.rn-mode-text-wrap {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
 .rn-mode-title {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
+}
+
+.rn-mode-scan-btn {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rn-mode-scan-btn:hover:not(:disabled) {
+  background: var(--btn-hover-bg);
+  border-color: var(--border-hover);
+}
+
+.rn-mode-scan-btn.rn-scanning {
+  background: var(--danger-gradient);
+  border-color: transparent;
+  color: #fff;
+  animation: rnPulseStop 1.6s infinite ease-in-out;
+}
+
+@keyframes rnPulseStop {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.97); opacity: 0.88; }
+}
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -496,7 +546,7 @@ body {
 /* 统计卡片 */
 .rn-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
 }
 
