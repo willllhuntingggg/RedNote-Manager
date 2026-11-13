@@ -14,7 +14,12 @@
         <h1 class="rn-title" id="rn-title">RedNote Manager</h1>
       </div>
       <div class="rn-hdr-actions">
-        <button class="rn-icobtn" id="rn-gear" type="button" title="偏好设置与维护">⚙</button>
+        <button class="rn-icobtn" id="rn-gear" type="button" title="偏好设置与维护">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
         <button class="rn-icobtn rn-close-btn" id="rn-btn-close" type="button" title="关闭设置 (Esc)" hidden>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -30,7 +35,9 @@
         <!-- 模式状态指示条（跟随左侧小红书页面） -->
         <div class="rn-mode-banner" id="rn-mode-banner" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
           <div class="rn-mode-info">
-            <span class="rn-mode-icon" id="rn-mode-icon">⭐</span>
+            <span class="rn-mode-icon" id="rn-mode-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            </span>
             <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
           </div>
           <button class="rn-btn rn-mini rn-mode-scan-btn" id="rn-scan" type="button" title="读取当前页面列表（按住 Shift 点击可清空缓存全新读取）">读取列表</button>
@@ -61,8 +68,14 @@
           <button class="rn-btn rn-mini" id="rn-sel-all" type="button" title="勾选当前列表的全部未处理笔记">全选</button>
           <button class="rn-btn rn-mini" id="rn-sel-invert" type="button">反选</button>
           <button class="rn-btn rn-mini" id="rn-sel-clear" type="button">清空</button>
-          <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">✨ AI 分类</button>
-          <button class="rn-btn rn-mini" id="rn-btn-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>
+          <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
+            <span>AI 分类</span>
+          </button>
+          <button class="rn-btn rn-mini" id="rn-btn-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            <span>叠卡浏览</span>
+          </button>
         </div>
 
         <!-- AI 标签胶囊筛选栏（分析后或有缓存标签时展示） -->
@@ -80,10 +93,13 @@
           <div class="rn-bottom-actions">
             <button class="rn-btn rn-primary rn-main-action-btn" id="rn-start" type="button">取消收藏</button>
             <button class="rn-btn rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作 (⌘Z)" hidden>
-              ↩️ 撤销上次
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+              <span class="rn-undo-label">撤销上次</span>
             </button>
             <button class="rn-btn rn-log-toggle-btn" id="rn-log-toggle" type="button" title="收起/展开操作记录">
-              📋 记录 <span class="rn-toggle-arrow" id="rn-log-arrow">▾</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              <span>操作记录</span>
+              <span class="rn-toggle-arrow" id="rn-log-arrow">▾</span>
             </button>
           </div>
           <div class="rn-log-collapse" id="rn-log-collapse">
@@ -95,7 +111,10 @@
       <!-- 视图 2：偏好设置与维护视图 (点击右上角 ⚙ 全屏平滑切入，独享垂直高度，绝不挤压主工作区) -->
       <div class="rn-view rn-view-settings" id="rn-settings" hidden>
         <div class="rn-settings-card">
-          <div class="rn-settings-hd">⚙️ 运行参数</div>
+          <div class="rn-settings-hd">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+            运行参数
+          </div>
           <div class="rn-field">
             <label>操作间隔</label>
             <input class="rn-input rn-num" id="rn-minDelay" type="number" min="800" max="20000" step="100" />
@@ -119,11 +138,16 @@
         </div>
 
         <div class="rn-settings-card">
-          <div class="rn-settings-hd">🤖 AI 智能打标设置 (DeepSeek)</div>
+          <div class="rn-settings-hd">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>
+            AI 智能打标设置 (DeepSeek)
+          </div>
           <div class="rn-field">
             <label>API Key</label>
             <input class="rn-input rn-grow" id="rn-ai-key" type="password" placeholder="sk-..." autocomplete="off" />
-            <button class="rn-icobtn rn-mini-ico" id="rn-ai-key-eye" type="button" title="显示/隐藏密钥">👁</button>
+            <button class="rn-icobtn rn-mini-ico" id="rn-ai-key-eye" type="button" title="显示/隐藏密钥">
+              <svg class="rn-eye-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
           </div>
           <div class="rn-field">
             <label>模型选择</label>
@@ -144,7 +168,10 @@
         </div>
 
         <div class="rn-settings-card">
-          <div class="rn-settings-hd">🎨 外观主题</div>
+          <div class="rn-settings-hd">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"></path></svg>
+            外观主题
+          </div>
           <div class="rn-field">
             <label>主题模式</label>
             <select class="rn-select rn-grow" id="rn-appearance">
@@ -156,11 +183,14 @@
         </div>
 
         <div class="rn-settings-card">
-          <div class="rn-settings-hd">🛠️ 维护与高级工具</div>
+          <div class="rn-settings-hd">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+            维护与高级工具
+          </div>
           <div class="rn-row rn-settings-actions">
             <button class="rn-btn rn-mini" id="rn-refresh" type="button" title="清空独立缓存并重新从页面读取">刷新缓存</button>
             <button class="rn-btn rn-mini" id="rn-undo" type="button" title="撤销最近处理的一批笔记">撤销上次</button>
-            <button class="rn-btn rn-mini" id="rn-log-diag" type="button" title="一键运行全景诊断并自动复制诊断日志，方便排查">🔍 诊断并复制</button>
+            <button class="rn-btn rn-mini" id="rn-log-diag" type="button" title="一键运行全景诊断并自动复制诊断日志，方便排查">诊断并复制</button>
             <button class="rn-btn rn-mini rn-btn-danger" id="rn-clear" type="button" title="清空本地已处理记录">清空记录</button>
           </div>
         </div>

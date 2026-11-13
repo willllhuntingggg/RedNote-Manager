@@ -335,16 +335,40 @@ globalThis.RNStyle = `
   .rn-stack-title-area {
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 10px !important;
+  }
+  .rn-stack-order-group {
+    display: inline-flex !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 8px !important;
+    padding: 2px !important;
+    gap: 2px !important;
+  }
+  .rn-stack-order-btn {
+    all: unset !important;
+    cursor: pointer !important;
+    padding: 3px 9px !important;
+    border-radius: 6px !important;
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    color: #a0a0b2 !important;
+    transition: all 0.15s ease !important;
+    line-height: 1.3 !important;
+    user-select: none !important;
+  }
+  .rn-stack-order-btn:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+  .rn-stack-order-btn.rn-active {
+    background: #ff2e4d !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 4px rgba(255, 46, 77, 0.4) !important;
   }
   .rn-stack-badge {
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    color: #fff !important;
-    background: linear-gradient(135deg, #ff2e4d, #ff5c78) !important;
-    padding: 3px 10px !important;
-    border-radius: 12px !important;
-    box-shadow: 0 2px 8px rgba(255, 46, 77, 0.4) !important;
+    display: none !important;
   }
   .rn-stack-counter {
     font-size: 13px !important;
@@ -400,16 +424,16 @@ globalThis.RNStyle = `
     background: rgba(255, 255, 255, 0.25) !important;
   }
 
-  /* 自动下一个 & 随机回顾开关栏 */
+  /* 自动下一个开关栏 */
   .rn-stack-auto-row {
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
-    justify-content: space-between !important;
+    justify-content: flex-end !important;
     gap: 10px !important;
     font-size: 12px !important;
     color: #cfcfe0 !important;
-    padding: 2px 2px 8px 2px !important;
+    padding: 0 4px 6px 4px !important;
   }
   .rn-stack-opt {
     display: flex !important;

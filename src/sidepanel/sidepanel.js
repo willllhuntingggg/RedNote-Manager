@@ -330,21 +330,25 @@ function applyState(st) {
     const bannerIcon = $('rn-mode-icon');
     const curCount = isUnlike ? unlikeNum : uncollectNum;
 
+    const SVG_ICON_STAR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+    const SVG_ICON_HEART = '<svg width="14" height="14" viewBox="0 0 24 24" fill="#ff2442" stroke="#ff2442" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>';
+    const SVG_ICON_NOTES = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>';
+
     if (isOwn) {
       if (bannerTitle) bannerTitle.textContent = '当前模式：我的笔记（受安全保护）';
       if (bannerSub) bannerSub.textContent = '请在小红书切换至「收藏」或「赞过」';
       if (bannerBadge) bannerBadge.textContent = '';
-      if (bannerIcon) bannerIcon.textContent = '📝';
+      if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_NOTES;
     } else if (isUnlike) {
       if (bannerTitle) bannerTitle.textContent = '当前模式：取消点赞';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
-      if (bannerIcon) bannerIcon.textContent = '❤️';
+      if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_HEART;
     } else {
       if (bannerTitle) bannerTitle.textContent = '当前模式：取消收藏';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
-      if (bannerIcon) bannerIcon.textContent = '⭐';
+      if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_STAR;
     }
   }
 
@@ -433,11 +437,18 @@ function applyState(st) {
       if (btn.id === 'rn-log-undo') {
         btn.hidden = false;
       }
+      const labelText = lastUndo.type === 'single'
+        ? ('撤销 (' + undoKeyLabel + ')')
+        : ('撤销 ' + lastUndo.count + '篇 (' + undoKeyLabel + ')');
+      const innerLabel = btn.querySelector('.rn-undo-label');
+      if (innerLabel) {
+        innerLabel.textContent = labelText;
+      } else {
+        btn.textContent = labelText;
+      }
       if (lastUndo.type === 'single') {
-        btn.textContent = '↩️ 撤销 (' + undoKeyLabel + ')';
         btn.title = '撤销最近划走/处理的单篇笔记：' + (lastUndo.title || lastUndo.noteId) + ' (' + undoKeyLabel + ')';
       } else {
-        btn.textContent = '↩️ 撤销 ' + lastUndo.count + '篇 (' + undoKeyLabel + ')';
         btn.title = '撤销最近批量处理的 ' + lastUndo.count + ' 篇笔记 (' + undoKeyLabel + ')';
       }
     } else {
@@ -445,7 +456,13 @@ function applyState(st) {
       if (btn.id === 'rn-log-undo') {
         btn.hidden = true;
       }
-      btn.textContent = '↩️ 撤销 (' + undoKeyLabel + ')';
+      const labelText = '撤销 (' + undoKeyLabel + ')';
+      const innerLabel = btn.querySelector('.rn-undo-label');
+      if (innerLabel) {
+        innerLabel.textContent = labelText;
+      } else {
+        btn.textContent = labelText;
+      }
       btn.title = '当前没有可撤销的操作记录 (' + undoKeyLabel + ')';
     }
   });
@@ -678,8 +695,9 @@ function renderList(candidates, visible, st, query) {
       '<div class="rn-item-main">' +
         '<div class="rn-item-row">' +
           '<span class="rn-nm">' + esc(titleOf(n)) + '</span>' +
-          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">↗</a>' +
-          '<span class="rn-id">' + esc(n.id.slice(-6)) + '</span>' +
+          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>' +
+          '</a>' +
         '</div>' +
         tagsHtml +
       '</div>' +
@@ -1447,8 +1465,11 @@ function bindEvents() {
     aiKeyEye.addEventListener('click', function () {
       const keyInput = $('rn-ai-key');
       if (!keyInput) return;
-      keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
-      aiKeyEye.textContent = keyInput.type === 'password' ? '👁' : '🔒';
+      const isPass = keyInput.type === 'password';
+      keyInput.type = isPass ? 'text' : 'password';
+      const SVG_EYE = '<svg class="rn-eye-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+      const SVG_EYE_OFF = '<svg class="rn-eye-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+      aiKeyEye.innerHTML = isPass ? SVG_EYE_OFF : SVG_EYE;
     });
   }
 

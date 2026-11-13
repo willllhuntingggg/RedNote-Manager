@@ -1928,6 +1928,7 @@
     list: [],
     index: 0,
     autoAdvance: true,
+    orderMode: 'desc', // 'desc' (倒序-最新优先), 'asc' (正序-从旧到新), 'random' (随机漫游)
     randomMode: false,
     history: [],
     working: false,
@@ -1943,8 +1944,17 @@
   try {
     const savedAuto = localStorage.getItem('rn:stack_auto_advance');
     if (savedAuto !== null) stackState.autoAdvance = savedAuto === 'true';
-    const savedRandom = localStorage.getItem('rn:stack_random_mode');
-    if (savedRandom !== null) stackState.randomMode = savedRandom === 'true';
+    const savedOrder = localStorage.getItem('rn:stack_order_mode');
+    if (savedOrder && (savedOrder === 'asc' || savedOrder === 'desc' || savedOrder === 'random')) {
+      stackState.orderMode = savedOrder;
+      stackState.randomMode = savedOrder === 'random';
+    } else {
+      const savedRandom = localStorage.getItem('rn:stack_random_mode');
+      if (savedRandom === 'true') {
+        stackState.orderMode = 'random';
+        stackState.randomMode = true;
+      }
+    }
   } catch (e) {}
 
   /**
@@ -1978,9 +1988,48 @@
         return info.decision === tag || info.category === tag;
       });
     }
-    return list.filter(function (n) {
+    let result = list.filter(function (n) {
       return !isProcessed(curMode, n.id);
     });
+
+    // 3. 应用排序方式：正序 (asc) 翻转为从旧到新；倒序 (desc) 保持最新优先；随机 (random) 保持原样由 nextStackCard 随机抽取
+    if (stackState.orderMode === 'asc') {
+      return result.slice().reverse();
+    }
+    return result;
+  }
+
+  function setStackOrderMode(newMode) {
+    if (newMode !== 'desc' && newMode !== 'asc' && newMode !== 'random') return;
+    stackState.orderMode = newMode;
+    stackState.randomMode = newMode === 'random';
+    try {
+      localStorage.setItem('rn:stack_order_mode', newMode);
+      localStorage.setItem('rn:stack_random_mode', String(newMode === 'random'));
+    } catch (e) {}
+
+    if (stackState.els && stackState.els.orderBtns) {
+      stackState.els.orderBtns.forEach(function (btn) {
+        btn.classList.toggle('rn-active', btn.dataset.order === newMode);
+      });
+    }
+
+    const currentNote = stackState.list[stackState.index];
+    const reordered = getStackFilteredList();
+    stackState.list = reordered;
+
+    let targetIdx = 0;
+    if (currentNote && currentNote.id) {
+      for (let i = 0; i < reordered.length; i++) {
+        if (reordered[i].id === currentNote.id) {
+          targetIdx = i;
+          break;
+        }
+      }
+    }
+    stackState.index = targetIdx;
+    renderStackCard();
+    showToast(newMode === 'asc' ? '已切换为：按时间正序（从旧到新）' : (newMode === 'random' ? '已切换为：随机回顾模式' : '已切换为：按时间倒序（最新优先）'));
   }
 
   function openStackView(opts) {
@@ -2064,6 +2113,11 @@
       stackState.els.overlay.classList.add('rn-open');
       stackState.els.overlay.setAttribute('tabindex', '-1');
       try { stackState.els.overlay.focus(); } catch (e) {}
+    }
+    if (stackState.els && stackState.els.orderBtns) {
+      stackState.els.orderBtns.forEach(function (btn) {
+        btn.classList.toggle('rn-active', btn.dataset.order === stackState.orderMode);
+      });
     }
     try { window.focus(); } catch (e) {}
     renderStackCard();
@@ -3274,7 +3328,7 @@
       '  已选择 <span class="rn-bar-count" id="rn-bar-count">0</span> 篇笔记',
       '</div>',
       '<span class="rn-bar-sep"></span>',
-      '<button class="rn-bar-btn" id="rn-bar-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>',
+      '<button class="rn-bar-btn" id="rn-bar-stack" type="button" title="以叠卡形式逐篇浏览并快速操作"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:4px;"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>叠卡浏览</button>',
       '<button class="rn-bar-btn" id="rn-bar-clear" type="button" title="清空全部已选笔记">清空</button>',
       '<button class="rn-bar-btn rn-bar-open" id="rn-bar-open" type="button" title="展开 Chrome 原生侧边栏操作">展开侧边栏 ⇥</button>',
     ].join('');
@@ -3285,7 +3339,7 @@
     filterPill.className = 'rn-filter-pill';
     filterPill.id = 'rn-filter-pill';
     filterPill.innerHTML = [
-      '<span class="rn-filter-pill-icon">🔍</span>',
+      '<span class="rn-filter-pill-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>',
       '<span class="rn-filter-pill-text" id="rn-filter-pill-text"></span>',
       '<button class="rn-filter-pill-clear" id="rn-filter-pill-clear" type="button" title="清空搜索词并恢复全部卡片">清空 ×</button>',
     ].join('');
@@ -3302,22 +3356,19 @@
       '<div class="rn-stack-box">',
       '  <div class="rn-stack-header">',
       '    <div class="rn-stack-title-area">',
-      '      <span class="rn-stack-badge">🗂️ 叠卡浏览</span>',
+      '      <div class="rn-stack-order-group" id="rn-stack-order-group">',
+      '        <button class="rn-stack-order-btn' + (stackState.orderMode === 'desc' ? ' rn-active' : '') + '" id="rn-order-desc" data-order="desc" type="button" title="倒序：从最新笔记开始浏览">倒序</button>',
+      '        <button class="rn-stack-order-btn' + (stackState.orderMode === 'asc' ? ' rn-active' : '') + '" id="rn-order-asc" data-order="asc" type="button" title="正序：按时间从旧到新浏览">正序</button>',
+      '        <button class="rn-stack-order-btn' + (stackState.orderMode === 'random' ? ' rn-active' : '') + '" id="rn-order-random" data-order="random" type="button" title="随机：随机抽取回顾">随机</button>',
+      '      </div>',
       '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
       '    </div>',
       '    <div class="rn-stack-header-actions">',
-      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: ' + undoKeyLabel + ')" disabled>↩️ 撤销刚才</button>',
-      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×</button>',
+      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: ' + undoKeyLabel + ')" disabled><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>撤销刚才</button>',
+      '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>',
       '    </div>',
       '  </div>',
       '  <div class="rn-stack-auto-row">',
-      '    <div class="rn-stack-opt">',
-      '      <span>🎲 随机回顾</span>',
-      '      <label class="rn-stack-toggle" title="开启后，下一个将随机抽取笔记进行回顾">',
-      '        <input type="checkbox" id="rn-stack-random-toggle"' + (stackState.randomMode ? ' checked' : '') + '>',
-      '        <span class="rn-stack-slider"></span>',
-      '      </label>',
-      '    </div>',
       '    <div class="rn-stack-opt">',
       '      <span>操作后自动下一个</span>',
       '      <label class="rn-stack-toggle" title="开启后，点击操作按钮将自动滑向下一篇">',
@@ -3332,7 +3383,7 @@
       '    <div class="rn-card-main" id="rn-card-main">',
       '      <div class="rn-card-cover-box">',
       '        <img class="rn-card-cover-img" id="rn-card-img" alt="封面" style="display:none;" />',
-      '        <div class="rn-card-cover-empty" id="rn-card-empty">🎴</div>',
+      '        <div class="rn-card-cover-empty" id="rn-card-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>',
       '        <span class="rn-card-status-pill" id="rn-card-status">待处理</span>',
       '        <a class="rn-card-open-btn" id="rn-card-open-btn" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">查看原文 ↗</a>',
       '      </div>',
@@ -3347,13 +3398,13 @@
       '  </div>',
       '  <div class="rn-stack-actions">',
       '    <button class="rn-action-nav-btn" id="rn-stack-prev" type="button" title="上一张 (快捷键: ←)">',
-      '      <span>⬅</span> 上一个',
+      '      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><polyline points="15 18 9 12 15 6"></polyline></svg> 上一个',
       '    </button>',
       '    <div class="rn-action-exec-btns">',
       '      <button class="rn-stack-action-btn" id="rn-stack-action" type="button" aria-label="执行操作" title="取消操作 (快捷键: 空格 / 回车 / ↓)"></button>',
       '    </div>',
       '    <button class="rn-action-nav-btn" id="rn-stack-next" type="button" title="下一张 (快捷键: →)">',
-      '      下一个 <span>➡</span>',
+      '      下一个 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><polyline points="9 18 15 12 9 6"></polyline></svg>',
       '    </button>',
       '  </div>',
       '  <div class="rn-stack-tips">',
@@ -3389,7 +3440,7 @@
       counter: $('#rn-stack-counter', root),
       close: $('#rn-stack-close', root),
       autoToggle: $('#rn-stack-auto-toggle', root),
-      randomToggle: $('#rn-stack-random-toggle', root),
+      orderBtns: root.querySelectorAll('.rn-stack-order-btn'),
       layer1: $('#rn-layer-1', root),
       layer2: $('#rn-layer-2', root),
       cardMain: $('#rn-card-main', root),
@@ -3489,12 +3540,13 @@
       } catch (e) {}
     });
 
-    stackState.els.randomToggle.addEventListener('change', function () {
-      stackState.randomMode = !!this.checked;
-      try {
-        localStorage.setItem('rn:stack_random_mode', String(stackState.randomMode));
-      } catch (e) {}
-      renderStackCard();
+    const orderBtns = root.querySelectorAll('.rn-stack-order-btn');
+    stackState.els.orderBtns = orderBtns;
+    orderBtns.forEach(function (btn) {
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        setStackOrderMode(btn.dataset.order);
+      });
     });
 
     stackState.els.btnPrev.addEventListener('click', function (ev) {

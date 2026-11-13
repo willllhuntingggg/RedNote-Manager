@@ -1450,14 +1450,14 @@ test('叠卡模式快捷键视觉美学：移除破坏圆形关闭按钮与翻�
   const styleCode = fs.readFileSync(path.resolve(__dirname, '../src/content/style.js'), 'utf8');
 
   // 1. 关闭按钮必须保持纯净圆形，不塞入破坏比例的 Esc 文字
-  assert.ok(contentCode.includes('class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">×<'), '关闭按钮保持纯粹简洁的 × 字符');
+  assert.ok(contentCode.includes('class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">'), '关闭按钮保持纯粹简洁');
   assert.ok(!contentCode.includes('>× <kbd class="rn-stack-nav-kbd">Esc</kbd><'), '关闭按钮内禁止内嵌 Esc 徽标导致变形');
 
   // 2. 撤销与翻页按钮不臃肿塞键帽，保持设计感，且智能自适应系统快捷键（Mac ⌘Z / Win Ctrl+Z）
   assert.ok(contentCode.includes('class="rn-stack-header-undo" id="rn-stack-undo" type="button"'), '撤销按钮文案整洁自然');
   assert.ok(contentCode.includes('undoKeyLabel'), '撤销快捷键自适应系统架构');
-  assert.ok(contentCode.includes('<span>⬅</span> 上一个'), '上一个按钮文案整洁自然');
-  assert.ok(contentCode.includes('下一个 <span>➡</span>'), '下一个按钮文案整洁自然');
+  assert.ok(contentCode.includes('id="rn-stack-prev"') && contentCode.includes('上一个'), '上一个按钮文案整洁自然且专业');
+  assert.ok(contentCode.includes('id="rn-stack-next"') && contentCode.includes('下一个'), '下一个按钮文案整洁自然且专业');
 
   // 3. 底部独立快捷键指引栏 (rn-stack-tips) 结构与样式完整
   assert.ok(contentCode.includes('class="rn-stack-tips"'), '必须包含底部独立快捷键栏');
@@ -3032,6 +3032,36 @@ test('底部布局重排与交互防线：主操作区下移、全选/反选Arra
   assert.strictEqual(jsContent.includes('logExpanded = !logExpanded'), true, '支持操作记录折叠展开切换');
   assert.strictEqual(htmlContent.includes('id="rn-log-collapse"'), true, 'HTML 包含操作记录可收缩容器');
   assert.strictEqual(htmlContent.includes('id="rn-log-arrow"'), true, '包含操作记录展开状态箭头');
+});
+
+test('专业设计与叠卡正序排序演进：去玩具化矢量图标、移除列表冗余id、叠卡正序/倒序/随机分段器', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+
+  const htmlContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.html'), 'utf8');
+  const jsContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.js'), 'utf8');
+  const contentJs = fs.readFileSync(path.join(rootDir, 'src/content/content.js'), 'utf8');
+  const styleJs = fs.readFileSync(path.join(rootDir, 'src/content/style.js'), 'utf8');
+
+  // 1. 验证列表项已彻底移除冗余的 rn-id 尾部显示
+  assert.strictEqual(jsContent.includes("class=\"rn-id\""), false, '侧边栏笔记列表项已彻底移除右侧无意义的 id 字符');
+
+  // 2. 验证去玩具化：设置齿轮、AI分析、叠卡浏览、撤销等核心按钮已升级为专业矢量 SVG 图标
+  assert.strictEqual(htmlContent.includes('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n            <circle cx="12" cy="12" r="3"></circle>'), true, '设置齿轮按钮已升级为专业 Lucide Settings SVG 矢量图标');
+  assert.strictEqual(htmlContent.includes('✨ AI 分类'), false, 'AI 按钮彻底移除 emoji');
+  assert.strictEqual(htmlContent.includes('🗂️ 叠卡浏览'), false, '侧边栏叠卡按钮彻底移除 emoji');
+
+  // 3. 验证叠卡弹窗已去除重复冗余的标题
+  assert.strictEqual(contentJs.includes('<span class="rn-stack-badge">🗂️ 叠卡浏览</span>'), false, '叠卡弹窗内彻底去除重复冗余的标题徽标');
+
+  // 4. 验证叠卡排序三段式控制组 [倒序 | 正序 | 随机]
+  assert.strictEqual(contentJs.includes('id="rn-order-desc"'), true, '叠卡包含倒序切换按钮');
+  assert.strictEqual(contentJs.includes('id="rn-order-asc"'), true, '叠卡包含正序切换按钮');
+  assert.strictEqual(contentJs.includes('id="rn-order-random"'), true, '叠卡包含随机切换按钮');
+  assert.strictEqual(styleJs.includes('.rn-stack-order-group'), true, 'style.js 包含排序分段器样式');
+  assert.strictEqual(contentJs.includes("stackState.orderMode === 'asc'"), true, 'content.js 支持正序从旧到新逆向反转排序');
+  assert.strictEqual(contentJs.includes('result.slice().reverse()'), true, '正序排序算法正确反转数组');
 });
 
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {

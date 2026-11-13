@@ -857,9 +857,12 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 4px;
-  font-size: 11px;
-  line-height: 1.1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   color: var(--text-dim);
   background: var(--link-bg);
   border: 1px solid var(--link-border);
@@ -871,17 +874,15 @@ body {
   user-select: none;
 }
 
+.rn-item .rn-item-link svg {
+  display: block;
+}
+
 .rn-item .rn-item-link:hover {
   color: #fff;
   background: var(--primary);
   border-color: var(--primary);
   transform: translateY(-1px);
-}
-
-.rn-item .rn-id {
-  color: var(--text-dim);
-  font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .rn-item.rn-done {
@@ -928,6 +929,19 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.rn-settings-hd svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.rn-tools .rn-btn svg,
+.rn-bottom-actions .rn-btn svg {
+  display: inline-block;
+  vertical-align: -1px;
+  margin-right: 3px;
+  flex-shrink: 0;
 }
 
 .rn-settings-actions {
