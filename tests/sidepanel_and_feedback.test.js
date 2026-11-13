@@ -2962,6 +2962,23 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 恢复且始终呈现');
 });
 
+test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {
+  const { execSync } = require('child_process');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const filesToCheck = [
+    'src/sidepanel/sidepanel.js',
+    'src/content/content.js',
+    'src/content/style.js',
+    'src/core.js',
+    'src/background.js',
+    'src/ai/deepseek.js',
+  ];
+  const cmd = 'node -c ' + filesToCheck.map(f => '"' + path.join(rootDir, f) + '"').join(' ');
+  const res = execSync(cmd, { encoding: 'utf8' });
+  assert.strictEqual(res, '', '所有核心脚本必须 100% 语法正确通过 node -c');
+});
+
 
 
 

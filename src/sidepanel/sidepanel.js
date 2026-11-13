@@ -779,10 +779,9 @@ function rnSetView(viewName) {
     if (settingsView) {
       settingsView.hidden = false;
       settingsView.scrollTop = 0;
+      void settingsView.offsetWidth; // 触发回流建立起始动画帧
     }
     if (bodyEl) {
-      // 触发重绘以确保平滑向左滑入生效
-      void bodyEl.offsetWidth;
       bodyEl.classList.add('rn-settings-open');
     }
     if (gearBtn) {
@@ -1148,17 +1147,6 @@ function bindEvents() {
       }
     });
   }
-    const res = await sendToTab('RN_OPEN_STACK_VIEW', {
-      keyword: query,
-      tag: activeTagFilter,
-      ids: ids,
-    });
-    if (!res) {
-      alert('未检测到小红书页面或通信超时。\n请确认左侧网页已打开小红书（xiaohongshu.com）主页并刷新页面重试。');
-    } else if (!res.ok) {
-      alert(res.reason || '当前未检测到笔记卡片：\n请在小红书页面向下滚动浏览加载内容，或点击「读取列表」后再试。');
-    }
-  });
 
   // ✨ AI 分类按钮点击：触发 DeepSeek 语义分析
   const aiBtn = $('rn-btn-ai');
