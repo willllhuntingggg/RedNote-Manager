@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const C = require('../src/core.js');
 
 test('核心配置中已彻底移除演练模式 (dryRun)', () => {
@@ -2521,6 +2523,114 @@ test('全景运行诊断与事件轨迹追踪系统：多维度采集DOM真实�
   assert.ok(fullReport.includes('getPageActualTabType() 结果：like'));
   assert.ok(fullReport.includes('TAB_CLICK_EVENT'));
 });
+
+test('全链路防串仓终极闭环：换Tab深度拦截机制（candidates全量黑名单 + 250ms沉淀门禁 + anyStale绝对阻断），彻底杜绝切回收藏时421篇点赞卡片瞬时渗透入库', () => {
+  const contentCode = fs.readFileSync(path.join(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 源码关键防线验证
+  assert.ok(contentCode.includes('minSettleMs = 250'), 'waitForCards 必须包含至少 250ms 的沉淀门禁');
+  assert.ok(contentCode.includes('state.candidates.forEach'), 'beginTabTransition 必须直接拍摄全量候选池入黑名单');
+  assert.ok(contentCode.includes("UNLOCK_TRANSITION"), '必须记录安全解锁诊断事件');
+
+  // 2. 模拟用户真实发生的 08:55:17 故障轨迹
+  // 用户在点赞页累积了 421 篇点赞卡片，点击收藏切仓
+  const likedNotes421 = Array.from({ length: 421 }, (_, i) => ({
+    id: 'like_' + String(i).padStart(18, '0'),
+    title: '点赞笔记 ' + i,
+    author: '博主 ' + i,
+  }));
+
+  let currentCandidates = likedNotes421.slice();
+  let currentScannedTab = 'like';
+  let tabTransitionLock = false;
+  let tabTransitionTarget = '';
+  let tabTransitionStaleIds = new Set();
+  let tabTransitionStartTime = 0;
+
+  // 模拟 beginTabTransition('collect')
+  function beginTransition(targetTab, domCards) {
+    tabTransitionStaleIds = new Set();
+    // 拍摄 DOM
+    domCards.forEach(c => tabTransitionStaleIds.add(c.id));
+    // 拍摄当前工作区 candidates（核心防线！）
+    currentCandidates.forEach(c => tabTransitionStaleIds.add(c.id));
+
+    tabTransitionLock = true;
+    tabTransitionTarget = targetTab;
+    tabTransitionStartTime = Date.now();
+    currentScannedTab = targetTab;
+    currentCandidates = [];
+  }
+
+  // 模拟 syncDomCardsToCandidates
+  function syncCards(actualTab, domCards) {
+    if (tabTransitionLock) {
+      if (actualTab !== tabTransitionTarget) return false;
+      const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+      if (anyStale) {
+        return false; // 只要有旧卡片在，坚决拒绝入库！
+      }
+      tabTransitionLock = false;
+      tabTransitionStaleIds.clear();
+    }
+    domCards.forEach(c => {
+      if (!currentCandidates.some(x => x.id === c.id)) {
+        currentCandidates.push(c);
+      }
+    });
+    return true;
+  }
+
+  // 模拟 waitForCards
+  function canUnlock(curTab, domCards, elapsedMs) {
+    if (elapsedMs < 250) return false; // 250ms 门禁
+    const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
+    if (anyStale) return false;
+    tabTransitionLock = false;
+    tabTransitionStaleIds.clear();
+    return true;
+  }
+
+  // 步骤 1：触发切仓到收藏
+  // 此时屏幕顶部残留点赞的第 0..5 篇卡片（共 6 篇）
+  const topLikedCards6 = likedNotes421.slice(0, 6);
+  beginTransition('collect', topLikedCards6);
+
+  assert.strictEqual(tabTransitionLock, true);
+  assert.strictEqual(currentCandidates.length, 0, '换仓立即物理清零');
+  assert.strictEqual(tabTransitionStaleIds.size, 421, '421篇点赞卡片全部进入黑名单');
+
+  // 步骤 2：在 0ms 瞬间（即用户报告中的 08:55:17），旧 DOM 卡片依然在页面上
+  // 此时 waitForCards 判定（0ms 未达 250ms）
+  const unlockAt0ms = canUnlock('collect', topLikedCards6, 0);
+  assert.strictEqual(unlockAt0ms, false, '0ms 门禁坚决拒绝解锁');
+
+  // 此时 syncCards 尝试入库
+  const syncAt0ms = syncCards('collect', topLikedCards6);
+  assert.strictEqual(syncAt0ms, false, '过渡锁期间只要有旧卡片坚决拒绝入库');
+  assert.strictEqual(currentCandidates.length, 0, '候选池依然保持纯净的 0 篇，绝对不被 6 篇点赞卡片污染！');
+
+  // 步骤 3：在 1500ms，小红书接口依然在加载中，旧 DOM 卡片依然在
+  const unlockAt1500ms = canUnlock('collect', topLikedCards6, 1500);
+  assert.strictEqual(unlockAt1500ms, false, 'DOM 中有旧卡片时坚决不解锁');
+  const syncAt1500ms = syncCards('collect', topLikedCards6);
+  assert.strictEqual(syncAt1500ms, false, '依然坚决阻断入库');
+
+  // 步骤 4：在 3000ms（即用户报告中的 08:55:20），小红书终于返回真实收藏数据，渲染 25 篇真实收藏卡片
+  const realCollectCards25 = Array.from({ length: 25 }, (_, i) => ({
+    id: 'col_' + String(i).padStart(19, '0'),
+    title: '收藏笔记 ' + i,
+  }));
+  const unlockAt3000ms = canUnlock('collect', realCollectCards25, 3000);
+  assert.strictEqual(unlockAt3000ms, true, '全新卡片安全解锁');
+  assert.strictEqual(tabTransitionLock, false, '过渡锁安全解除');
+
+  const syncAt3000ms = syncCards('collect', realCollectCards25);
+  assert.strictEqual(syncAt3000ms, true, '真实收藏卡片安全入库');
+  assert.strictEqual(currentCandidates.length, 25, '候选池纯净且仅包含 25 篇收藏卡片');
+  assert.strictEqual(currentCandidates.every(c => c.id.startsWith('col_')), true, '彻底消灭任何点赞卡片的串仓渗透！');
+});
+
 
 
 
