@@ -50,6 +50,11 @@
     '    }',
     '  }',
     '}',
+    '',
+    '【格式严苛规范】：',
+    '1. 必须输出严格符合标准 JSON 格式的对象，严禁在最后一个属性或最后一个对象后留有末尾逗号 (trailing comma)。',
+    '2. 严禁在 reason 内容中使用半角双引号，如有引用请用中文引号「」或书名号《》代替。',
+    '3. 只返回纯 JSON，不附带任何前缀或后缀说明。',
   ].join('\n');
 
   /**
@@ -72,21 +77,115 @@
 
   /**
    * 清洗 LLM 输出的文本为合法 JSON
+   * 自动剥离 Markdown 围栏、注释、以及尾随逗号 (trailing commas)
    */
   function cleanJsonText(raw) {
     if (!raw) return '{}';
     let s = String(raw).trim();
-    // 移除 markdown ```json 和 ``` 标记
-    if (s.startsWith('```')) {
-      s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-    }
-    // 提取首个 { 到最后一个 }
+
+    // 剔除所有 markdown 代码块标记 (如 ```json 或 ```)
+    s = s.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+
+    // 提取首个 { 到最后一个 }，或首个 [ 到最后一个 ]
     const firstBrace = s.indexOf('{');
     const lastBrace = s.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      s = s.slice(firstBrace, lastBrace + 1);
+    const firstBracket = s.indexOf('[');
+    const lastBracket = s.lastIndexOf(']');
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+      if (firstBracket === -1 || firstBrace < firstBracket) {
+        s = s.slice(firstBrace, lastBrace + 1);
+      } else if (lastBracket > firstBracket) {
+        s = s.slice(firstBracket, lastBracket + 1);
+      }
+    } else if (firstBracket !== -1 && lastBracket !== -1 && lastBracket >= firstBracket) {
+      s = s.slice(firstBracket, lastBracket + 1);
     }
+
+    // 移除多行与单行注释
+    s = s.replace(/\/\*[\s\S]*?\*\//g, '');
+    s = s.replace(/^\s*\/\/.*$/gm, '');
+
+    // 循环剔除尾随逗号 (trailing commas: ,} 或 ,])
+    let prev;
+    do {
+      prev = s;
+      s = s.replace(/,\s*([}\]])/g, '$1');
+    } while (s !== prev);
+
     return s;
+  }
+
+  /**
+   * 鲁棒解析 LLM 返回的 JSON 内容
+   * 多重降级防护体系：
+   * 1. 尝试清洗后的标准 JSON.parse
+   * 2. 尝试清洗控制字符与非法换行后的 JSON.parse
+   * 3. 若仍解析失败，启动正则逐条提取引擎 (逐项提取 id -> category, decision, reason)，
+   *    确保即使个别记录含有未转义半角引号等语法残损，其余有效笔记全部正常完成打标，绝不抛出语法崩溃中断
+   */
+  function parseAiJsonSafely(raw, batchIds) {
+    const cleaned = cleanJsonText(raw);
+
+    // 第 1 级尝试：标准清洗解析
+    try {
+      return JSON.parse(cleaned);
+    } catch (e1) {
+      // 降级尝试
+    }
+
+    // 第 2 级尝试：清理字符串内部未转义的控制字符 (0x00 - 0x1F)
+    try {
+      const sanitized = cleaned.replace(/[\u0000-\u0009\u000B-\u001F]+/g, ' ');
+      return JSON.parse(sanitized);
+    } catch (e2) {
+      // 降级尝试
+    }
+
+    // 第 3 级尝试：正则语义逐条提取兜底引擎
+    const items = {};
+    const ids = Array.isArray(batchIds) && batchIds.length > 0 ? batchIds : [];
+
+    for (let k = 0; k < ids.length; k++) {
+      const id = String(ids[k]);
+      const escapedId = id.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      const blockRegex = new RegExp('["\']?' + escapedId + '["\']?\\s*:\\s*\\{([\\s\\S]*?)(?:\\}\\s*[,}]|(?=["\']?[a-zA-Z0-9_-]+["\']?\\s*:\\s*\\{)|$)', 'i');
+      const blockMatch = cleaned.match(blockRegex);
+      if (blockMatch) {
+        const body = blockMatch[1];
+        const catM = body.match(/["']category["']\s*:\s*["']([^"']+)["']/i);
+        const decM = body.match(/["']decision["']\s*:\s*["']([^"']+)["']/i);
+        const reaM = body.match(/["']reason["']\s*:\s*["']([\s\S]*?)["'](?=\s*[,}\n]|$)/i)
+          || body.match(/["']reason["']\s*:\s*["']([^"'\r\n]+)/i);
+        items[id] = {
+          category: catM ? catM[1].trim() : '其他',
+          decision: decM ? decM[1].trim() : '普通浏览',
+          reason: reaM ? reaM[1].trim() : '',
+        };
+      }
+    }
+
+    if (Object.keys(items).length > 0) {
+      return { items: items };
+    }
+
+    // 通用提取：扫描所有 ID 格式
+    const genericRegex = /["']([a-zA-Z0-9_-]{8,36})["']\s*:\s*\{([^{}]+)\}/g;
+    let m;
+    while ((m = genericRegex.exec(cleaned)) !== null) {
+      const gId = m[1];
+      const gBody = m[2];
+      const catM = gBody.match(/["']category["']\s*:\s*["']([^"']+)["']/i);
+      const decM = gBody.match(/["']decision["']\s*:\s*["']([^"']+)["']/i);
+      const reaM = gBody.match(/["']reason["']\s*:\s*["']([^"']+)["']/i);
+      items[gId] = {
+        category: catM ? catM[1].trim() : '其他',
+        decision: decM ? decM[1].trim() : '普通浏览',
+        reason: reaM ? reaM[1].trim() : '',
+      };
+    }
+
+    return { items: items };
   }
 
   /**
@@ -187,7 +286,7 @@
     }
 
     const endpoint = (config.baseUrl || DEFAULT_CONFIG.baseUrl).replace(/\/+$/, '') + '/chat/completions';
-    const BATCH_SIZE = 35;
+    const BATCH_SIZE = 20;
     const allResults = {};
     const total = notes.length;
     let completed = 0;
@@ -197,13 +296,10 @@
 
     for (let i = 0; i < notes.length; i += BATCH_SIZE) {
       const batch = notes.slice(i, i + BATCH_SIZE).map(n => ({
-        id: n.id,
+        id: String(n.id),
         title: (n.title || '').slice(0, 60),
         author: (n.author || '').slice(0, 30),
       }));
-
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 35000);
 
       const reqBody = {
         model: model,
@@ -217,76 +313,111 @@
         reqBody.temperature = 0.2;
       }
 
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey,
-          },
-          body: JSON.stringify(reqBody),
-          signal: controller.signal,
-        });
+      let lastErr = null;
+      let batchSuccess = false;
 
-        clearTimeout(timer);
+      // 单次批次允许 1 次瞬态网络重试，增强抗波动韧性
+      for (let attempt = 0; attempt < 2 && !batchSuccess; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 35000);
 
-        if (!res.ok) {
-          const errText = await res.text().catch(() => '');
-          let serverDetail = '';
-          if (errText) {
-            try {
-              const j = JSON.parse(errText);
-              if (j && j.error && j.error.message) serverDetail = j.error.message;
-            } catch (e) {
-              serverDetail = errText.slice(0, 150);
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + apiKey,
+            },
+            body: JSON.stringify(reqBody),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timer);
+
+          if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            let serverDetail = '';
+            if (errText) {
+              try {
+                const j = JSON.parse(errText);
+                if (j && j.error && j.error.message) serverDetail = j.error.message;
+              } catch (e) {
+                serverDetail = errText.slice(0, 150);
+              }
+            }
+
+            let errMsg = '调用 AI 失败 (HTTP ' + res.status + ')';
+            if (res.status === 401) {
+              errMsg = serverDetail
+                ? ('DeepSeek API 认证失败 (401)：' + serverDetail + '。请检查设置中的密钥是否有效未过期')
+                : 'DeepSeek API Key 验证失败 (401 Unauthorized)，请检查设置中的密钥是否有效或包含多余字符';
+              throw new Error(errMsg);
+            } else if (res.status === 402) {
+              errMsg = serverDetail
+                ? ('DeepSeek 账户余额不足 (402)：' + serverDetail)
+                : 'DeepSeek 账户余额已耗尽，请前往 platform.deepseek.com 充值';
+              throw new Error(errMsg);
+            } else if (res.status === 429) {
+              errMsg = serverDetail
+                ? ('DeepSeek 请求频率超限 (429)：' + serverDetail)
+                : 'DeepSeek 请求频率超限，请稍候再试';
+            } else if (serverDetail) {
+              errMsg = serverDetail;
+            }
+            throw new Error(errMsg);
+          }
+
+          const data = await res.json();
+          const contentStr = data && data.choices && data.choices[0] && data.choices[0].message
+            ? data.choices[0].message.content
+            : '{}';
+
+          const batchIds = batch.map(b => b.id);
+          const parsed = parseAiJsonSafely(contentStr, batchIds);
+          let items = parsed.items || parsed;
+
+          // 若返回数组格式，自动转为按 id 索引的对象
+          if (Array.isArray(items)) {
+            const map = {};
+            for (let m = 0; m < items.length; m++) {
+              const it = items[m];
+              if (it && it.id) map[String(it.id)] = it;
+            }
+            items = map;
+          }
+
+          if (items && typeof items === 'object') {
+            for (let j = 0; j < batch.length; j++) {
+              const id = batch[j].id;
+              const item = items[id] || {};
+              allResults[id] = {
+                category: item.category || '其他',
+                decision: item.decision || '普通浏览',
+                reason: item.reason || '',
+                updatedAt: Date.now(),
+              };
             }
           }
 
-          let errMsg = '调用 AI 失败 (HTTP ' + res.status + ')';
-          if (res.status === 401) {
-            errMsg = serverDetail
-              ? ('DeepSeek API 认证失败 (401)：' + serverDetail + '。请检查设置中的密钥是否有效未过期')
-              : 'DeepSeek API Key 验证失败 (401 Unauthorized)，请检查设置中的密钥是否有效或包含多余字符';
-          } else if (res.status === 402) {
-            errMsg = serverDetail
-              ? ('DeepSeek 账户余额不足 (402)：' + serverDetail)
-              : 'DeepSeek 账户余额已耗尽，请前往 platform.deepseek.com 充值';
-          } else if (res.status === 429) {
-            errMsg = serverDetail
-              ? ('DeepSeek 请求频率超限 (429)：' + serverDetail)
-              : 'DeepSeek 请求频率超限，请稍候再试';
-          } else if (serverDetail) {
-            errMsg = serverDetail;
+          batchSuccess = true;
+        } catch (err) {
+          clearTimeout(timer);
+          lastErr = err;
+          // 致命鉴权/余额错误直接跳出，不重试
+          if (err && (String(err.message).includes('401') || String(err.message).includes('402'))) {
+            throw err;
           }
-          throw new Error(errMsg);
-        }
-
-        const data = await res.json();
-        const contentStr = data && data.choices && data.choices[0] && data.choices[0].message
-          ? data.choices[0].message.content
-          : '{}';
-
-        const parsed = JSON.parse(cleanJsonText(contentStr));
-        const items = parsed.items || parsed;
-
-        if (items && typeof items === 'object') {
-          for (let j = 0; j < batch.length; j++) {
-            const id = batch[j].id;
-            const item = items[id] || {};
-            allResults[id] = {
-              category: item.category || '其他',
-              decision: item.decision || '普通浏览',
-              reason: item.reason || '',
-              updatedAt: Date.now(),
-            };
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 1200));
           }
         }
-      } catch (err) {
-        clearTimeout(timer);
-        if (err.name === 'AbortError') {
+      }
+
+      if (!batchSuccess) {
+        if (lastErr && lastErr.name === 'AbortError') {
           throw new Error('AI 分析请求超时，请稍候再试');
         }
-        throw err;
+        throw (lastErr || new Error('AI 分析批次失败'));
       }
 
       completed += batch.length;
@@ -379,6 +510,7 @@
     DECISION_META: DECISION_META,
     cleanApiKey: cleanApiKey,
     cleanJsonText: cleanJsonText,
+    parseAiJsonSafely: parseAiJsonSafely,
     testConnection: testConnection,
     analyzeNotes: analyzeNotes,
     loadConfig: loadConfig,

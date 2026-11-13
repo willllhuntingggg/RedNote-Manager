@@ -20,9 +20,67 @@ test('RNAI cleanJsonText 能够正确提取并清洗各种 Markdown 与杂文字
   const chatty = 'Here is your analysis result:\n{"items":{"123":{"decision":"时效过期"}}}\nHope this helps!';
   assert.strictEqual(RNAI.cleanJsonText(chatty), '{"items":{"123":{"decision":"时效过期"}}}');
 
-  // 4. 空值兜底
+  // 4. 自动剔除尾随逗号 (Trailing Commas)
+  const trailing = '{"items":{"123":{"decision":"时效过期",},},}';
+  assert.strictEqual(RNAI.cleanJsonText(trailing), '{"items":{"123":{"decision":"时效过期"}}}');
+
+  // 5. 自动剔除单行与多行注释
+  const withComments = '// 结果如下\n{\n  /* 注释 */\n  "items": {\n    "n1": { "category": "美食探店" }\n  }\n}';
+  assert.strictEqual(RNAI.cleanJsonText(withComments), '{\n  \n  "items": {\n    "n1": { "category": "美食探店" }\n  }\n}');
+
+  // 6. 空值兜底
   assert.strictEqual(RNAI.cleanJsonText(null), '{}');
   assert.strictEqual(RNAI.cleanJsonText(''), '{}');
+});
+
+test('RNAI parseAiJsonSafely 具备多重降级与防崩溃韧性 (解决末尾逗号与引号异常)', () => {
+  // 1. 真实复现用户碰到的 V8 报错场景：line 116 包含尾随逗号
+  const userCaseBadJson = `{
+    "items": {
+      "note_001": {
+        "category": "美食探店",
+        "decision": "普通浏览",
+        "reason": "常规探店分享",
+      },
+      "note_002": {
+        "category": "学习干货",
+        "decision": "干货保值",
+        "reason": "系统化实用指南",
+      },
+    },
+  }`;
+  const parsed1 = RNAI.parseAiJsonSafely(userCaseBadJson, ['note_001', 'note_002']);
+  assert.ok(parsed1.items);
+  assert.strictEqual(parsed1.items.note_001.category, '美食探店');
+  assert.strictEqual(parsed1.items.note_002.decision, '干货保值');
+
+  // 2. reason 中含有未转义的双引号场景 (例如: "reason": "包含了"限时优惠"等说明")
+  const unescapedQuoteJson = `{
+    "items": {
+      "note_101": {
+        "category": "生活家居",
+        "decision": "时效过期",
+        "reason": "包含了"限时特惠"等字样"
+      },
+      "note_102": {
+        "category": "数码科技",
+        "decision": "干货保值",
+        "reason": "实用评测"
+      }
+    }
+  }`;
+  const parsed2 = RNAI.parseAiJsonSafely(unescapedQuoteJson, ['note_101', 'note_102']);
+  assert.ok(parsed2.items);
+  assert.strictEqual(parsed2.items.note_101.decision, '时效过期');
+  assert.ok(parsed2.items.note_101.reason.includes('限时特惠'));
+  assert.strictEqual(parsed2.items.note_102.category, '数码科技');
+
+  // 3. 数组格式返回能够自动兼容
+  const arrayFormatJson = `[
+    { "id": "note_201", "category": "职场提升", "decision": "干货保值", "reason": "面试技巧" }
+  ]`;
+  const parsed3 = RNAI.parseAiJsonSafely(arrayFormatJson, ['note_201']);
+  assert.ok(Array.isArray(parsed3) || (parsed3.items && parsed3.items.note_201));
 });
 
 test('RNAI cleanApiKey 能够正确清理各种带前缀、引号及隐形字符的密钥', () => {
