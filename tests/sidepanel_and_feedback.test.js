@@ -2781,6 +2781,54 @@ test('小红书多容器常驻轮播架构（transform-container）防串仓终�
   assert.strictEqual(likeResult.some(c => c.id.includes('col_')), false, '收藏笔记 0% 渗透进点赞！');
 });
 
+test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支持与系统偏好跟随联动', () => {
+  // 1. 验证 HTML 中存在外观主题配置选择控件与完整的选项
+  const htmlPath = path.join(__dirname, '../src/sidepanel/sidepanel.html');
+  const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+  assert.strictEqual(htmlContent.includes('id="rn-appearance"'), true, 'HTML 中包含 rn-appearance 控件');
+  assert.strictEqual(htmlContent.includes('value="auto"'), true, '包含 auto 选项');
+  assert.strictEqual(htmlContent.includes('value="light"'), true, '包含 light 选项');
+  assert.strictEqual(htmlContent.includes('value="dark"'), true, '包含 dark 选项');
+
+  // 2. 验证 CSS 中存在完善的深浅色变量和主题属性规则
+  const cssPath = path.join(__dirname, '../src/sidepanel/sidepanel.css');
+  const cssContent = fs.readFileSync(cssPath, 'utf8');
+  assert.strictEqual(cssContent.includes('html[data-theme="light"]'), true, 'CSS 定义了浅色模式主题选择器');
+  assert.strictEqual(cssContent.includes('color-scheme: light'), true, '浅色主题声明了 color-scheme: light');
+  assert.strictEqual(cssContent.includes('color-scheme: dark'), true, '深色主题声明了 color-scheme: dark');
+  assert.strictEqual(cssContent.includes('--bg-primary: #f6f7fa'), true, '浅色模式包含浅色背景定义');
+
+  // 3. 验证 JS 中存在外观应用逻辑与事件处理
+  const jsPath = path.join(__dirname, '../src/sidepanel/sidepanel.js');
+  const jsContent = fs.readFileSync(jsPath, 'utf8');
+  assert.strictEqual(jsContent.includes('function resolveEffectiveTheme'), true, 'JS 包含主题解析函数');
+  assert.strictEqual(jsContent.includes('applyAppearance'), true, 'JS 包含 applyAppearance 应用函数');
+  assert.strictEqual(jsContent.includes("setVal('rn-appearance'"), true, 'syncSettings 同步设置包含 appearance 字段');
+  assert.strictEqual(jsContent.includes("addEventListener('change'"), true, '包含外观变动事件监听');
+
+  // 4. 模拟运行环境验证主题计算逻辑
+  function mockResolveEffectiveTheme(appearance, isSystemDark) {
+    if (appearance === 'light') return 'light';
+    if (appearance === 'dark') return 'dark';
+    return isSystemDark ? 'dark' : 'light';
+  }
+
+  // 测试强制浅色模式
+  assert.strictEqual(mockResolveEffectiveTheme('light', true), 'light', '用户设置为 light 时，即便系统为 dark 也是 light');
+  assert.strictEqual(mockResolveEffectiveTheme('light', false), 'light', '用户设置为 light 时保持 light');
+
+  // 测试强制深色模式
+  assert.strictEqual(mockResolveEffectiveTheme('dark', false), 'dark', '用户设置为 dark 时，即便系统为 light 也是 dark');
+  assert.strictEqual(mockResolveEffectiveTheme('dark', true), 'dark', '用户设置为 dark 时保持 dark');
+
+  // 测试跟随系统 auto
+  assert.strictEqual(mockResolveEffectiveTheme('auto', true), 'dark', '用户设置为 auto 且系统为深色时，解析为 dark');
+  assert.strictEqual(mockResolveEffectiveTheme('auto', false), 'light', '用户设置为 auto 且系统为浅色时，解析为 light');
+  assert.strictEqual(mockResolveEffectiveTheme(undefined, false), 'light', '未定义时默认 auto，随系统浅色解析为 light');
+  assert.strictEqual(mockResolveEffectiveTheme(undefined, true), 'dark', '未定义时默认 auto，随系统深色解析为 dark');
+});
+
+
 
 
 

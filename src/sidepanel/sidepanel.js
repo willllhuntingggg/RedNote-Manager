@@ -24,6 +24,59 @@ let isAiAnalyzing = false;
 let showProcessedNotes = false;
 let sidepanelPort = null;
 let listRenderLimit = 200;
+let currentAppearance = 'auto';
+
+/* ============================ 外观主题管理 (Light / Dark / Auto) ============================ */
+
+function getSystemTheme() {
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function resolveEffectiveTheme(appearance) {
+  if (appearance === 'light') return 'light';
+  if (appearance === 'dark') return 'dark';
+  return getSystemTheme();
+}
+
+function applyAppearance(appearance) {
+  currentAppearance = appearance || 'auto';
+  const effective = resolveEffectiveTheme(currentAppearance);
+  document.documentElement.setAttribute('data-appearance', currentAppearance);
+  document.documentElement.setAttribute('data-theme', effective);
+}
+
+// 监听系统主题偏好变化（仅在 auto 模式下动态生效）
+if (window.matchMedia) {
+  const mql = window.matchMedia('(prefers-color-scheme: dark)');
+  const handleThemeChange = function () {
+    if (currentAppearance === 'auto') {
+      applyAppearance('auto');
+    }
+  };
+  if (typeof mql.addEventListener === 'function') {
+    mql.addEventListener('change', handleThemeChange);
+  } else if (typeof mql.addListener === 'function') {
+    mql.addListener(handleThemeChange);
+  }
+}
+
+// 脚本载入时第一时间从本地存储获取主题，杜绝界面初次渲染时的深浅色闪烁
+try {
+  if (chrome && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get('rn:settings', function (res) {
+      const s = res && res['rn:settings'];
+      if (s && s.appearance) {
+        applyAppearance(s.appearance);
+      } else {
+        applyAppearance('auto');
+      }
+    });
+  } else {
+    applyAppearance('auto');
+  }
+} catch (e) {
+  applyAppearance('auto');
+}
 
 function ensurePortConnection(tabId) {
   if (typeof tabId !== 'number') return;
@@ -635,6 +688,8 @@ function syncSettings(s) {
   setVal('rn-maxPerRun', s.maxPerRun);
   setVal('rn-cooldownEvery', s.cooldownEvery);
   setVal('rn-cooldownMs', s.cooldownMs);
+  setVal('rn-appearance', s.appearance || 'auto');
+  applyAppearance(s.appearance || 'auto');
   const auto = $('rn-autoScroll');
   if (auto && active !== auto && typeof s.autoScroll === 'boolean') {
     auto.checked = s.autoScroll;
@@ -1163,6 +1218,24 @@ function bindEvents() {
     await sendToTab('RN_UPDATE_SETTINGS', { settings: { autoScroll: !!$('rn-autoScroll').checked } });
     requestState();
   });
+
+  const appEl = $('rn-appearance');
+  if (appEl) {
+    appEl.addEventListener('change', async function () {
+      const val = appEl.value;
+      applyAppearance(val);
+      try {
+        if (chrome && chrome.storage && chrome.storage.local) {
+          const got = await chrome.storage.local.get('rn:settings');
+          const current = (got && got['rn:settings']) || {};
+          current.appearance = val;
+          await chrome.storage.local.set({ 'rn:settings': current });
+        }
+      } catch (e) {}
+      await sendToTab('RN_UPDATE_SETTINGS', { settings: { appearance: val } });
+      requestState();
+    });
+  }
 
   $('rn-clear').addEventListener('click', async function () {
     await sendToTab('RN_CLEAR_RECORDS');

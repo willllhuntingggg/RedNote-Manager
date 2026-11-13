@@ -71,18 +71,24 @@ test('clampSettings 兜底默认值并夹住危险输入', () => {
   const d = C.clampSettings(null);
   assert.strictEqual(d.dryRun, undefined, '演练模式已被移除');
   assert.strictEqual(d.mode, 'uncollect');
+  assert.strictEqual(d.appearance, 'auto', '默认主题为跟随系统 (auto)');
 
-  const evil = C.clampSettings({ minDelay: 0, maxDelay: 1, maxPerRun: 99999, cooldownMs: -5, mode: 'rm-rf' });
+  const evil = C.clampSettings({ minDelay: 0, maxDelay: 1, maxPerRun: 99999, cooldownMs: -5, mode: 'rm-rf', appearance: 'hacker-green' });
   assert.strictEqual(evil.minDelay, 800);
   assert.strictEqual(evil.maxDelay, 800, 'maxDelay 不得低于 minDelay');
   assert.strictEqual(evil.maxPerRun, 200);
   assert.strictEqual(evil.cooldownMs, 0);
   assert.strictEqual(evil.mode, 'uncollect', '非法模式回落到默认');
+  assert.strictEqual(evil.appearance, 'auto', '非法主题回落到 auto');
 
-  const ok = C.clampSettings({ mode: 'unlike', minDelay: 2000, maxDelay: 5000, keyword: '美食 -广告' });
+  const ok = C.clampSettings({ mode: 'unlike', minDelay: 2000, maxDelay: 5000, keyword: '美食 -广告', appearance: 'light' });
   assert.strictEqual(ok.mode, 'unlike');
   assert.strictEqual(ok.minDelay, 2000);
   assert.strictEqual(ok.keyword, '美食 -广告');
+  assert.strictEqual(ok.appearance, 'light', '合法浅色主题正常接收');
+
+  const darkSet = C.clampSettings({ appearance: 'dark' });
+  assert.strictEqual(darkSet.appearance, 'dark', '合法深色主题正常接收');
 
   // 字符串数字（来自 input.value）也要能解析
   assert.strictEqual(C.clampSettings({ maxPerRun: '12' }).maxPerRun, 12);

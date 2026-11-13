@@ -84,6 +84,7 @@
     cooldownMs: 45000,
     keyword: '', // 搜索词：只过滤「看得见什么」和批量勾选，不再隐式决定执行范围
     autoScroll: true,
+    appearance: 'auto', // 'auto' (跟随系统) | 'light' (浅色) | 'dark' (深色)
   };
 
   /* 硬边界：用户填什么都不允许越过，防止手滑填 0 间隔 / 9999 条 */
@@ -107,6 +108,9 @@
       if (MODES[raw.mode]) out.mode = raw.mode;
       if (typeof raw.autoScroll === 'boolean') out.autoScroll = raw.autoScroll;
       if (typeof raw.keyword === 'string') out.keyword = raw.keyword.slice(0, 200);
+      if (raw.appearance === 'light' || raw.appearance === 'dark' || raw.appearance === 'auto') {
+        out.appearance = raw.appearance;
+      }
       Object.keys(LIMITS).forEach(function (k) {
         if (raw[k] === undefined || raw[k] === null || raw[k] === '') return;
         out[k] = clampInt(raw[k], LIMITS[k][0], LIMITS[k][1]);
