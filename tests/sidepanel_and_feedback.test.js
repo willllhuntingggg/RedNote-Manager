@@ -2731,9 +2731,6 @@ test('小红书多容器常驻轮播架构（transform-container）防串仓终�
     if (tc) {
       const slot = el.closest('.transform-container > *');
       if (slot) {
-        if (!slot.classList.contains('tab-content-item')) {
-          return true;
-        }
         const slots = Array.prototype.slice.call(tc.children);
         const slotIdx = slots.indexOf(slot);
         if (slotIdx !== -1 && slots.length >= 3) {
@@ -2755,28 +2752,33 @@ test('小红书多容器常驻轮播架构（transform-container）防串仓终�
   assert.strictEqual(isCardInWrongTabContainer(slot1.cardNodes[0], 'collect'), false, '收藏槽位内的卡片正常保留');
   assert.strictEqual(isCardInWrongTabContainer(slot1.cardNodes[1], 'collect'), false, '收藏槽位内的卡片正常保留');
 
-  // 3. 测试水平视口物理检测：left >= 768px (window.innerWidth = 769px)
-  function isHorizontallyVisible(el, winW) {
-    const r = el.getBoundingClientRect();
-    if (winW > 0 && r.width > 0 && r.height > 0) {
-      if (r.right <= 0 || r.left >= winW) return false;
+  // 3. 测试 cardNodes 槽位精准提取逻辑：
+  function mockCardNodes(forTab) {
+    let targetRoot = null;
+    const slots = transformContainer.children;
+    if (forTab === 'collect') targetRoot = slots[1];
+    else if (forTab === 'like') targetRoot = slots[2];
+    else if (forTab === 'notes') targetRoot = slots[0];
+
+    const out = [];
+    const cardList = targetRoot.children || [];
+    for (let j = 0; j < cardList.length; j++) {
+      const node = cardList[j];
+      if (isCardInWrongTabContainer(node, forTab)) continue;
+      out.push(node);
     }
-    return true;
+    return out;
   }
-  const winWidth = 769;
-  assert.strictEqual(isHorizontallyVisible(slot1.cardNodes[0], winWidth), true, '收藏卡片在屏幕中心可见');
-  assert.strictEqual(isHorizontallyVisible(slot2.cardNodes[0], winWidth), false, '点赞槽位卡片在屏幕右侧视口外（left=800px > 769px），物理不可见！');
-  assert.strictEqual(isHorizontallyVisible(slot2.cardNodes[1], winWidth), false, '点赞槽位卡片在屏幕右侧视口外，物理不可见！');
 
-  // 4. 模拟 cardNodes('collect')，验证最终只提取出收藏卡片，周杰伦等点赞卡片 0% 渗入！
-  const allCardNodes = [...slot1.cardNodes, ...slot2.cardNodes];
-  const filteredCollectCards = allCardNodes.filter(node => {
-    return isHorizontallyVisible(node, winWidth) && !isCardInWrongTabContainer(node, 'collect');
-  });
+  const collectResult = mockCardNodes('collect');
+  assert.strictEqual(collectResult.length, 3, '收藏模式精准提取 slot 1 里的 3 篇卡片');
+  assert.strictEqual(collectResult.every(c => c.id.startsWith('col_')), true, '提取出的全部是 col_ 开头的收藏笔记');
+  assert.strictEqual(collectResult.some(c => c.id.includes('jay')), false, '周杰伦等仅点赞的笔记 0% 渗透进收藏！');
 
-  assert.strictEqual(filteredCollectCards.length, 3, '只有收藏槽位的 3 篇卡片被提取');
-  assert.strictEqual(filteredCollectCards.every(c => c.id.startsWith('col_')), true, '提取出的全部是 col_ 开头的收藏笔记');
-  assert.strictEqual(filteredCollectCards.some(c => c.id.includes('jay')), false, '周杰伦等仅点赞的笔记 0% 渗透，彻底阻断！');
+  const likeResult = mockCardNodes('like');
+  assert.strictEqual(likeResult.length, 3, '点赞模式精准提取 slot 2 里的 3 篇卡片');
+  assert.strictEqual(likeResult.every(c => c.id.startsWith('like_')), true, '提取出的全部是 like_ 开头的点赞笔记');
+  assert.strictEqual(likeResult.some(c => c.id.includes('col_')), false, '收藏笔记 0% 渗透进点赞！');
 });
 
 

@@ -394,21 +394,6 @@
 
   function isCardVisible(el) {
     if (!el) return false;
-
-    // 0. 水平物理视口检测：小红书通过 transform: translate(-Xpx, 0) 将未激活的 Tab 槽位横向滑出视口之外
-    // 未激活 Tab 里的卡片 left >= window.innerWidth 或 right <= 0，物理上完全不在可见视口内
-    try {
-      if (typeof window !== 'undefined' && el.getBoundingClientRect) {
-        const r = el.getBoundingClientRect();
-        const winW = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 0;
-        if (winW > 0 && r.width > 0 && r.height > 0) {
-          if (r.right <= 0 || r.left >= winW) {
-            return false;
-          }
-        }
-      }
-    } catch (e) {}
-
     // 1. 标准 checkVisibility API (Chrome 105+)
     if (typeof el.checkVisibility === 'function') {
       try {
@@ -438,23 +423,17 @@
   function isCardInWrongTabContainer(el, tab) {
     if (!el || !el.closest || !tab) return false;
 
-    // 小红书新版个人主页：.feeds-tab-container -> .transform-container -> 3 个并列槽位 (0:笔记, 1:收藏, 2:点赞)
+    // 小红书专属多槽位轮播架构：.transform-container -> 3 个并列槽位 (0:笔记, 1:收藏, 2:点赞)
     const transformContainer = el.closest('.transform-container');
     if (transformContainer) {
       const slot = el.closest('.transform-container > *');
       if (slot) {
-        // 机制 1：小红书只给当前激活的槽位赋予 .tab-content-item 类名，未激活槽位类名为空！
-        if (!slot.classList.contains('tab-content-item')) {
-          return true; // 属于未激活的 Tab 槽位，坚决剔除！
-        }
-
-        // 机制 2：槽位序号严格映射 (0: 笔记, 1: 收藏, 2: 点赞)
         const slots = Array.prototype.slice.call(transformContainer.children);
         const slotIdx = slots.indexOf(slot);
         if (slotIdx !== -1 && slots.length >= 3) {
-          if (tab === 'collect' && slotIdx !== 1) return true;
-          if (tab === 'like' && slotIdx !== 2) return true;
-          if (tab === 'notes' && slotIdx !== 0) return true;
+          if (tab === 'collect' && slotIdx !== 1) return true; // 收藏模式坚决排除槽位 0(笔记) 和 2(点赞)
+          if (tab === 'like' && slotIdx !== 2) return true;    // 点赞模式坚决排除槽位 0(笔记) 和 1(收藏)
+          if (tab === 'notes' && slotIdx !== 0) return true;   // 笔记模式坚决排除槽位 1(收藏) 和 2(点赞)
         }
       }
     }
@@ -479,20 +458,20 @@
     const curTab = forTab || getPageActualTabType();
     const out = [];
 
-    // 优先仅在当前激活 Tab 对应的 DOM 容器内定位卡片，杜绝遍历其他槽位
+    // 精准锁定目标 Tab 的 DOM 内容槽位：
+    // 小红书原生 transform-container 结构：Slot 0=笔记，Slot 1=收藏，Slot 2=点赞
     let searchRoots = [];
     const transformContainer = document.querySelector('.transform-container');
     if (transformContainer) {
-      const activeSlot = transformContainer.querySelector('.tab-content-item');
-      if (activeSlot) {
-        searchRoots = [activeSlot];
-      } else {
-        const slots = transformContainer.children;
-        if (slots && slots.length >= 3) {
-          if (curTab === 'collect') searchRoots = [slots[1]];
-          else if (curTab === 'like') searchRoots = [slots[2]];
-          else if (curTab === 'notes') searchRoots = [slots[0]];
-        }
+      const slots = Array.prototype.slice.call(transformContainer.children);
+      if (slots.length >= 3) {
+        if (curTab === 'collect') searchRoots = [slots[1]];
+        else if (curTab === 'like') searchRoots = [slots[2]];
+        else if (curTab === 'notes') searchRoots = [slots[0]];
+      }
+      if (!searchRoots.length) {
+        const activeSlot = transformContainer.querySelector('.tab-content-item');
+        if (activeSlot) searchRoots = [activeSlot];
       }
     }
     if (!searchRoots.length) {
@@ -1262,7 +1241,7 @@
         return 0;
       }
       let added = 0;
-      scanCards().forEach(function (n) {
+      scanCards(expectedTab).forEach(function (n) {
         if (tabTransitionStaleIds && tabTransitionStaleIds.has(n.id)) return;
         if (!acc.has(n.id)) {
           acc.set(n.id, n);
