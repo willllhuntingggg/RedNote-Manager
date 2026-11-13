@@ -47,11 +47,6 @@
           <div class="rn-stat"><b id="rn-s-fail" class="rn-bad">0</b><span>失败</span></div>
         </div>
 
-        <!-- 主控制按钮 -->
-        <div class="rn-row">
-          <button class="rn-btn rn-primary rn-grow" id="rn-start" type="button">取消收藏</button>
-        </div>
-
         <!-- 搜索筛选 -->
         <div class="rn-search">
           <div class="rn-search-box rn-grow">
@@ -63,7 +58,7 @@
 
         <!-- 批量选择工具栏 -->
         <div class="rn-tools">
-          <button class="rn-btn rn-mini" id="rn-sel-all" type="button" title="勾选当前搜索命中的全部未处理笔记">全选命中</button>
+          <button class="rn-btn rn-mini" id="rn-sel-all" type="button" title="勾选当前列表的全部未处理笔记">全选</button>
           <button class="rn-btn rn-mini" id="rn-sel-invert" type="button">反选</button>
           <button class="rn-btn rn-mini" id="rn-sel-clear" type="button">清空</button>
           <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">✨ AI 分类</button>
@@ -80,19 +75,20 @@
           <div class="rn-empty">正在连接小红书页面…</div>
         </div>
 
-        <!-- 底部操作记录栏 -->
-        <div class="rn-log-panel">
-          <div class="rn-log-header">
-            <div class="rn-log-title">
-              <span>📋 操作记录</span>
-            </div>
-            <div class="rn-log-actions">
-              <button class="rn-btn rn-mini rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作（单篇或批量）" disabled>
-                ↩️ 撤销上次
-              </button>
-            </div>
+        <!-- 底部控制面板（按钮排列：取消收藏、撤销、操作记录） -->
+        <div class="rn-bottom-panel">
+          <div class="rn-bottom-actions">
+            <button class="rn-btn rn-primary rn-main-action-btn" id="rn-start" type="button">取消收藏</button>
+            <button class="rn-btn rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作 (⌘Z)" hidden>
+              ↩️ 撤销上次
+            </button>
+            <button class="rn-btn rn-log-toggle-btn" id="rn-log-toggle" type="button" title="收起/展开操作记录">
+              📋 记录 <span class="rn-toggle-arrow" id="rn-log-arrow">▾</span>
+            </button>
           </div>
-          <div class="rn-log" id="rn-log"></div>
+          <div class="rn-log-collapse" id="rn-log-collapse">
+            <div class="rn-log" id="rn-log"></div>
+          </div>
         </div>
       </div>
 

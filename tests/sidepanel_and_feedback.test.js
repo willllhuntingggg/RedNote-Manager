@@ -2994,6 +2994,46 @@ test('界面细节与控制状态交互演进：已读取计数还原、停止�
   assert.strictEqual(jsContent.includes("scanBtn.textContent = '⏹ 停止'"), true, '点击扫描时具备 0ms 乐观即刻切换停止状态');
 });
 
+test('底部布局重排与交互防线：主操作区下移、全选/反选Array解构、叠卡Esc快捷键与弹窗防误触', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+
+  const htmlContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.html'), 'utf8');
+  const cssContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.css'), 'utf8');
+  const jsContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.js'), 'utf8');
+  const contentJs = fs.readFileSync(path.join(rootDir, 'src/content/content.js'), 'utf8');
+
+  // 1. 验证取消收藏主按钮已移动至列表底部
+  const listIndex = htmlContent.indexOf('id="rn-list"');
+  const startIndex = htmlContent.indexOf('id="rn-start"');
+  const undoIndex = htmlContent.indexOf('id="rn-log-undo"');
+  const toggleIndex = htmlContent.indexOf('id="rn-log-toggle"');
+  const logIndex = htmlContent.indexOf('id="rn-log"');
+
+  assert.strictEqual(listIndex !== -1 && startIndex !== -1, true, '列表与主按钮均存在');
+  assert.strictEqual(listIndex < startIndex, true, '取消收藏/取消点赞主按钮已移至列表底部');
+  assert.strictEqual(startIndex < undoIndex, true, '按钮排列顺序1：取消收藏居前');
+  assert.strictEqual(undoIndex < toggleIndex, true, '按钮排列顺序2：撤销按需居中');
+  assert.strictEqual(toggleIndex < logIndex, true, '按钮排列顺序3：操作记录折叠控制在后');
+
+  // 2. 验证全选/反选杜绝 state.candidates.get 错误，并支持显式 Array 映射
+  assert.strictEqual(contentJs.includes('state.candidates.get('), false, '彻底杜绝将 Array 候选误用为 Map.get 的崩溃调用');
+  assert.strictEqual(contentJs.includes('candMap.get(id)'), true, '全选与反选建立安全 Map 映射检索');
+
+  // 3. 验证叠卡防误触：点击叠卡遮罩层不再误关闭弹窗，仅点关闭按钮触发
+  assert.strictEqual(contentJs.includes('stackOverlay.addEventListener(\'click\', function (ev) {\n      // 叠卡点击叠卡外不要关闭弹窗，只有点关闭按钮才能关闭'), true, '点击叠卡外彻底阻止误关闭');
+
+  // 4. 验证叠卡 Esc 快捷键支持 window/document/sidepanel 多维捕获
+  assert.strictEqual(contentJs.includes("ev.key === 'Escape' || ev.key === 'Esc' || ev.keyCode === 27"), true, 'content.js 全局键位捕获支持 Esc 多码兼容');
+  assert.strictEqual(jsContent.includes('RN_CLOSE_STACK_VIEW'), true, 'sidepanel.js 支持 Esc 键跨端联动关闭叠卡');
+
+  // 5. 验证操作记录可折叠收起控制
+  assert.strictEqual(jsContent.includes('logExpanded = !logExpanded'), true, '支持操作记录折叠展开切换');
+  assert.strictEqual(htmlContent.includes('id="rn-log-collapse"'), true, 'HTML 包含操作记录可收缩容器');
+  assert.strictEqual(htmlContent.includes('id="rn-log-arrow"'), true, '包含操作记录展开状态箭头');
+});
+
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {
   const { execSync } = require('child_process');
   const path = require('path');

@@ -1465,8 +1465,12 @@
 
   function selectAllVisible(explicitIds) {
     const mode = state.settings.mode;
+    const candMap = new Map();
+    (state.candidates || []).forEach(function (n) { if (n && n.id) candMap.set(n.id, n); });
+    visibleCandidates().forEach(function (n) { if (n && n.id && !candMap.has(n.id)) candMap.set(n.id, n); });
+
     const pool = Array.isArray(explicitIds)
-      ? explicitIds.map(function (id) { return state.candidates.get(id); }).filter(Boolean)
+      ? explicitIds.map(function (id) { return candMap.get(id) || { id: id, title: '' }; })
       : visibleCandidates();
     let added = 0;
     pool.forEach(function (n) {
@@ -1485,8 +1489,12 @@
 
   function invertVisible(explicitIds) {
     const mode = state.settings.mode;
+    const candMap = new Map();
+    (state.candidates || []).forEach(function (n) { if (n && n.id) candMap.set(n.id, n); });
+    visibleCandidates().forEach(function (n) { if (n && n.id && !candMap.has(n.id)) candMap.set(n.id, n); });
+
     const pool = Array.isArray(explicitIds)
-      ? explicitIds.map(function (id) { return state.candidates.get(id); }).filter(Boolean)
+      ? explicitIds.map(function (id) { return candMap.get(id) || { id: id, title: '' }; })
       : visibleCandidates();
     pool.forEach(function (n) {
       if (isProcessed(mode, n.id)) return;
@@ -1744,9 +1752,11 @@
       });
     }, true);
 
-    window.addEventListener('keydown', function (ev) {
+    const onGlobalKeydown = function (ev) {
       if (stackState.open) {
-        if (ev.key === 'Escape') {
+        if (ev.key === 'Escape' || ev.key === 'Esc' || ev.keyCode === 27) {
+          ev.preventDefault();
+          ev.stopPropagation();
           closeStackView();
           return;
         }
@@ -1776,7 +1786,10 @@
       if (!badge) return;
       ev.preventDefault();
       badge.click();
-    }, true);
+    };
+
+    window.addEventListener('keydown', onGlobalKeydown, true);
+    document.addEventListener('keydown', onGlobalKeydown, true);
 
     // 用户自主滚动浏览时，自动增量捕获新渲染的卡片并同步至侧边栏
     let scrollTimer = null;
@@ -2049,7 +2062,10 @@
 
     if (stackState.els && stackState.els.overlay) {
       stackState.els.overlay.classList.add('rn-open');
+      stackState.els.overlay.setAttribute('tabindex', '-1');
+      try { stackState.els.overlay.focus(); } catch (e) {}
     }
+    try { window.focus(); } catch (e) {}
     renderStackCard();
     return { ok: true, count: list.length };
   }
@@ -3457,9 +3473,8 @@
     });
 
     stackOverlay.addEventListener('click', function (ev) {
-      if (ev.target === stackOverlay) {
-        closeStackView();
-      }
+      // 叠卡点击叠卡外不要关闭弹窗，只有点关闭按钮才能关闭
+      ev.stopPropagation();
     });
 
     stackState.els.close.addEventListener('click', function (ev) {
@@ -3742,6 +3757,11 @@
         reason: (res && res.reason) || '',
         state: fullPublicState(),
       });
+      return;
+    }
+    if (msg.type === 'RN_CLOSE_STACK_VIEW') {
+      if (stackState.open) closeStackView();
+      sendResponse({ ok: true, state: fullPublicState() });
       return;
     }
   });

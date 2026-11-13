@@ -990,12 +990,111 @@ body {
   line-height: 1.5;
 }
 
-/* 底部操作记录栏与实时日志 */
+/* 底部控制面板与操作记录栏 */
+.rn-bottom-panel,
 .rn-log-panel {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  gap: 8px;
   margin-top: 10px;
+}
+
+.rn-bottom-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.rn-main-action-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
+  font-size: 13.5px;
+  font-weight: 700;
+  border-radius: 9px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 12px;
+}
+
+.rn-log-undo-btn {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  background: var(--undo-btn-bg);
+  border: 1px solid var(--undo-btn-border);
+  color: var(--undo-btn-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rn-log-undo-btn:hover:not(:disabled) {
+  background: var(--undo-btn-hover-bg);
+  border-color: var(--undo-btn-hover-border);
+  color: var(--undo-btn-hover-text);
+}
+
+.rn-log-undo-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: #2b2b36;
+  background: rgba(255, 255, 255, 0.04);
+  color: #666675;
+}
+
+.rn-log-undo-btn[hidden] {
+  display: none !important;
+}
+
+.rn-log-toggle-btn {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.rn-log-toggle-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--border-hover);
+}
+
+.rn-toggle-arrow {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.rn-log-collapse {
+  transition: all 0.2s ease;
+}
+
+.rn-log-collapse[hidden] {
+  display: none !important;
 }
 
 .rn-log-header {
@@ -1039,35 +1138,9 @@ body {
   color: #fff;
 }
 
-.rn-log-undo-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--undo-btn-bg);
-  border: 1px solid var(--undo-btn-border);
-  color: var(--undo-btn-text);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.rn-log-undo-btn:hover:not(:disabled) {
-  background: var(--undo-btn-hover-bg);
-  border-color: var(--undo-btn-hover-border);
-  color: var(--undo-btn-hover-text);
-}
-
-.rn-log-undo-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  border-color: #2b2b36;
-  background: rgba(255, 255, 255, 0.04);
-  color: #666675;
-}
-
 .rn-log {
-  flex: 0 0 120px;
-  height: 120px;
+  flex: 0 0 110px;
+  height: 110px;
   overflow-y: auto;
   background: var(--log-bg);
   border: 1px solid var(--log-border);

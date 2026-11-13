@@ -256,7 +256,10 @@ function renderDisconnected(message) {
     $('rn-scan').className = 'rn-btn rn-mini rn-mode-scan-btn';
   }
   if ($('rn-undo')) $('rn-undo').disabled = true;
-  if ($('rn-log-undo')) $('rn-log-undo').disabled = true;
+  if ($('rn-log-undo')) {
+    $('rn-log-undo').disabled = true;
+    $('rn-log-undo').hidden = true;
+  }
   if ($('rn-list')) $('rn-list').innerHTML = '<div class="rn-empty">' + message + '</div>';
 
   const alert = $('rn-alert');
@@ -416,7 +419,7 @@ function applyState(st) {
     }
   }
 
-  // 动态更新撤销按钮（设置中 + 底部操作记录栏，智能匹配 Mac ⌘Z 与 Windows Ctrl+Z）
+  // 动态更新撤销按钮（设置中 + 底部操作面板，按需出现，智能匹配 Mac ⌘Z 与 Windows Ctrl+Z）
   const undoBtns = [$('rn-undo'), $('rn-log-undo')].filter(Boolean);
   const lastUndo = st.lastUndo;
   const isMac = typeof navigator !== 'undefined' && (/Mac|iPhone|iPod|iPad/i.test(navigator.platform) || /Macintosh/i.test(navigator.userAgent));
@@ -427,16 +430,22 @@ function applyState(st) {
       btn.disabled = true;
     } else if (lastUndo && lastUndo.canUndo) {
       btn.disabled = false;
+      if (btn.id === 'rn-log-undo') {
+        btn.hidden = false;
+      }
       if (lastUndo.type === 'single') {
-        btn.textContent = '↩️ 撤销单篇 (' + undoKeyLabel + ')';
+        btn.textContent = '↩️ 撤销 (' + undoKeyLabel + ')';
         btn.title = '撤销最近划走/处理的单篇笔记：' + (lastUndo.title || lastUndo.noteId) + ' (' + undoKeyLabel + ')';
       } else {
-        btn.textContent = '↩️ 撤销上次 ' + lastUndo.count + '篇 (' + undoKeyLabel + ')';
+        btn.textContent = '↩️ 撤销 ' + lastUndo.count + '篇 (' + undoKeyLabel + ')';
         btn.title = '撤销最近批量处理的 ' + lastUndo.count + ' 篇笔记 (' + undoKeyLabel + ')';
       }
     } else {
       btn.disabled = true;
-      btn.textContent = '↩️ 撤销上次 (' + undoKeyLabel + ')';
+      if (btn.id === 'rn-log-undo') {
+        btn.hidden = true;
+      }
+      btn.textContent = '↩️ 撤销 (' + undoKeyLabel + ')';
       btn.title = '当前没有可撤销的操作记录 (' + undoKeyLabel + ')';
     }
   });
@@ -923,6 +932,21 @@ function bindEvents() {
     });
   }
 
+  // 操作记录折叠/展开控制（默认展开，可收起为笔记列表腾出空间）
+  let logExpanded = true;
+  const logToggleBtn = $('rn-log-toggle');
+  const logCollapse = $('rn-log-collapse');
+  const logArrow = $('rn-log-arrow');
+  if (logToggleBtn && logCollapse) {
+    logToggleBtn.addEventListener('click', function () {
+      logExpanded = !logExpanded;
+      logCollapse.hidden = !logExpanded;
+      if (logArrow) logArrow.textContent = logExpanded ? '▾' : '▸';
+      logToggleBtn.classList.toggle('rn-collapsed', !logExpanded);
+      logToggleBtn.title = logExpanded ? '收起操作记录' : '展开操作记录';
+    });
+  }
+
   const logContainer = $('rn-log');
   if (logContainer) {
     logContainer.addEventListener('click', async function (ev) {
@@ -1054,6 +1078,18 @@ function bindEvents() {
 
     // 立即更新命中数与已选统计
     $('rn-hit').textContent = filtered.length + '/' + candList.length;
+
+    // 动态调整全选按钮文案：无筛选时为「全选」，有搜索或标签筛选时为「全选命中」
+    const selAllBtn = $('rn-sel-all');
+    if (selAllBtn) {
+      if (query || (activeTagFilter && activeTagFilter !== 'all')) {
+        selAllBtn.textContent = '全选命中';
+        selAllBtn.title = '勾选当前搜索/标签筛选命中的全部 ' + filtered.length + ' 篇未处理笔记';
+      } else {
+        selAllBtn.textContent = '全选';
+        selAllBtn.title = '勾选当前列表的全部未处理笔记（共 ' + candList.length + ' 篇）';
+      }
+    }
     const selectedSet = new Set(lastState.selected || []);
     const visSelCount = filtered.filter(function (n) { return selectedSet.has(n.id); }).length;
     const hiddenCount = Math.max(0, selectedSet.size - visSelCount);
@@ -1535,11 +1571,13 @@ function bindEvents() {
     });
   }
   window.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') {
+    if (ev.key === 'Escape' || ev.key === 'Esc' || ev.keyCode === 27) {
       if (sponsorModal && !sponsorModal.hidden) {
         closeSponsorModal();
       } else if (settingsOpen) {
         rnSetView('main');
+      } else {
+        sendToTab('RN_CLOSE_STACK_VIEW').then(requestState).catch(function () {});
       }
     }
 
