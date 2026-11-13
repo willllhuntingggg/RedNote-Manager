@@ -874,10 +874,13 @@ function bindEvents() {
     });
   }
 
-  $('rn-undo').addEventListener('click', async function () {
-    await sendToTab('RN_ACTION', { action: 'undo' });
-    requestState();
-  });
+  const undoBtn = $('rn-undo');
+  if (undoBtn) {
+    undoBtn.addEventListener('click', async function () {
+      await sendToTab('RN_ACTION', { action: 'undo' });
+      requestState();
+    });
+  }
 
   const logUndoBtn = $('rn-log-undo');
   if (logUndoBtn) {
@@ -962,9 +965,12 @@ function bindEvents() {
     }
   }
 
-  $('rn-diag').addEventListener('click', function () {
-    runDiagnosisWithFeedback($('rn-diag'));
-  });
+  const diagBtn = $('rn-diag');
+  if (diagBtn) {
+    diagBtn.addEventListener('click', function () {
+      runDiagnosisWithFeedback(diagBtn);
+    });
+  }
 
   const logDiagBtn = $('rn-log-diag');
   if (logDiagBtn) {
@@ -1052,23 +1058,25 @@ function bindEvents() {
     });
   }
 
-  q.addEventListener('input', function () {
-    if (qClear) qClear.hidden = !q.value;
-    // 1. 本地即时计算并渲染搜索结果，并同步叠卡卡组
-    doSearchLocally();
+  if (q) {
+    q.addEventListener('input', function () {
+      if (qClear) qClear.hidden = !q.value;
+      // 1. 本地即时计算并渲染搜索结果，并同步叠卡卡组
+      doSearchLocally();
 
-    // 2. 联动向小红书页面同步搜索词（暗化页面未命中的卡片）
-    clearTimeout(qTimer);
-    qTimer = setTimeout(async function () {
-      await sendToTab('RN_SET_KEYWORD', { keyword: q.value });
-    }, 120);
-  });
+      // 2. 联动向小红书页面同步搜索词（暗化页面未命中的卡片）
+      clearTimeout(qTimer);
+      qTimer = setTimeout(async function () {
+        await sendToTab('RN_SET_KEYWORD', { keyword: q.value });
+      }, 120);
+    });
 
-  q.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') {
-      clearSearchInput();
-    }
-  });
+    q.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') {
+        clearSearchInput();
+      }
+    });
+  }
 
   // 胶囊标签点击事件（支持点击激活或再次点击反选）
   const chipsBar = $('rn-tag-chips');
@@ -1088,35 +1096,58 @@ function bindEvents() {
   }
 
   // 批量操作（基于当前关键词+AI标签联合过滤结果）
-  $('rn-sel-all').addEventListener('click', async function () {
-    const query = $('rn-q').value;
-    const candList = getUnprocessedCandidates(lastState);
-    const filtered = getFilteredVisible(candList, query, activeTagFilter);
-    const ids = filtered.map(function (n) { return n.id; });
-    await sendToTab('RN_SELECT_ALL_VISIBLE', { keyword: query, ids: ids });
-    requestState();
-  });
+  const selAllBtn = $('rn-sel-all');
+  if (selAllBtn) {
+    selAllBtn.addEventListener('click', async function () {
+      const query = $('rn-q') ? $('rn-q').value : '';
+      const candList = getUnprocessedCandidates(lastState);
+      const filtered = getFilteredVisible(candList, query, activeTagFilter);
+      const ids = filtered.map(function (n) { return n.id; });
+      await sendToTab('RN_SELECT_ALL_VISIBLE', { keyword: query, ids: ids });
+      requestState();
+    });
+  }
 
-  $('rn-sel-invert').addEventListener('click', async function () {
-    const query = $('rn-q').value;
-    const candList = getUnprocessedCandidates(lastState);
-    const filtered = getFilteredVisible(candList, query, activeTagFilter);
-    const ids = filtered.map(function (n) { return n.id; });
-    await sendToTab('RN_INVERT_VISIBLE', { ids: ids });
-    requestState();
-  });
+  const selInvertBtn = $('rn-sel-invert');
+  if (selInvertBtn) {
+    selInvertBtn.addEventListener('click', async function () {
+      const query = $('rn-q') ? $('rn-q').value : '';
+      const candList = getUnprocessedCandidates(lastState);
+      const filtered = getFilteredVisible(candList, query, activeTagFilter);
+      const ids = filtered.map(function (n) { return n.id; });
+      await sendToTab('RN_INVERT_VISIBLE', { ids: ids });
+      requestState();
+    });
+  }
 
-  $('rn-sel-clear').addEventListener('click', async function () {
-    await sendToTab('RN_CLEAR_SELECTION');
-    requestState();
-  });
+  const selClearBtn = $('rn-sel-clear');
+  if (selClearBtn) {
+    selClearBtn.addEventListener('click', async function () {
+      await sendToTab('RN_CLEAR_SELECTION');
+      requestState();
+    });
+  }
 
   // 点击叠卡浏览：传入当前搜索词、激活的Tag以及精确过滤的列表IDs，100%保持完全一致
-  $('rn-btn-stack').addEventListener('click', async function () {
-    const query = $('rn-q') ? $('rn-q').value.trim() : '';
-    const candList = getUnprocessedCandidates(lastState);
-    const filtered = getFilteredVisible(candList, query, activeTagFilter);
-    const ids = filtered.map(function (n) { return n.id; });
+  const stackBtn = $('rn-btn-stack');
+  if (stackBtn) {
+    stackBtn.addEventListener('click', async function () {
+      const query = $('rn-q') ? $('rn-q').value.trim() : '';
+      const candList = getUnprocessedCandidates(lastState);
+      const filtered = getFilteredVisible(candList, query, activeTagFilter);
+      const ids = filtered.map(function (n) { return n.id; });
+      const res = await sendToTab('RN_OPEN_STACK_VIEW', {
+        keyword: query,
+        tag: activeTagFilter,
+        ids: ids,
+      });
+      if (!res) {
+        alert('未检测到小红书页面或通信超时。\n请确认左侧网页已打开小红书（xiaohongshu.com）主页并刷新页面重试。');
+      } else if (!res.ok) {
+        alert(res.reason || '当前未检测到笔记卡片：\n请在小红书页面向下滚动浏览加载内容，或点击「读取列表」后再试。');
+      }
+    });
+  }
     const res = await sendToTab('RN_OPEN_STACK_VIEW', {
       keyword: query,
       tag: activeTagFilter,
@@ -1221,7 +1252,9 @@ function bindEvents() {
   }
 
   // 点击单条勾选 / Shift 区间勾选 / 快捷操作按钮
-  $('rn-list').addEventListener('click', async function (ev) {
+  const listEl = $('rn-list');
+  if (listEl) {
+    listEl.addEventListener('click', async function (ev) {
     if (ev.target && ev.target.id === 'rn-btn-toggle-show-processed') {
       showProcessedNotes = true;
       if (lastState) applyState(lastState);
@@ -1269,6 +1302,7 @@ function bindEvents() {
     await sendToTab('RN_TOGGLE_SELECTION', { noteId: noteId, shiftKey: !!ev.shiftKey });
     requestState();
   });
+  }
 
   // 点击已选统计可快捷切换显示/隐藏已处理笔记
   const selCountBtn = $('rn-sel-count');
@@ -1315,10 +1349,13 @@ function bindEvents() {
     });
   });
 
-  $('rn-autoScroll').addEventListener('change', async function () {
-    await sendToTab('RN_UPDATE_SETTINGS', { settings: { autoScroll: !!$('rn-autoScroll').checked } });
-    requestState();
-  });
+  const autoScrollEl = $('rn-autoScroll');
+  if (autoScrollEl) {
+    autoScrollEl.addEventListener('change', async function () {
+      await sendToTab('RN_UPDATE_SETTINGS', { settings: { autoScroll: !!autoScrollEl.checked } });
+      requestState();
+    });
+  }
 
   const appEl = $('rn-appearance');
   if (appEl) {
@@ -1338,10 +1375,13 @@ function bindEvents() {
     });
   }
 
-  $('rn-clear').addEventListener('click', async function () {
-    await sendToTab('RN_CLEAR_RECORDS');
-    requestState();
-  });
+  const clearBtn = $('rn-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async function () {
+      await sendToTab('RN_CLEAR_RECORDS');
+      requestState();
+    });
+  }
 
   // AI 设置相关事件绑定
   const aiKeyEye = $('rn-ai-key-eye');

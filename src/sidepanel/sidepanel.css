@@ -265,10 +265,10 @@ body {
 }
 
 .rn-title {
-  font-family: 'Caveat', 'Snell Roundhand', 'Dancing Script', 'Brush Script MT', 'Segoe Script', cursive;
-  font-size: 21px;
+  font-family: 'Noteworthy', 'Chalkboard SE', 'Ink Free', 'Bradley Hand', 'Caveat', 'Segoe Print', cursive, sans-serif;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   color: var(--text-main);
   line-height: 1.1;
   margin: 0;
@@ -447,9 +447,6 @@ body {
 @keyframes rnPulseStop {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(0.97); opacity: 0.88; }
-}
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .rn-mode-sub {
