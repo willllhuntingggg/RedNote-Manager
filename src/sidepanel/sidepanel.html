@@ -9,12 +9,20 @@
 <body>
   <div class="rn-panel">
     <header class="rn-hdr">
-      <div class="rn-logo">RN</div>
+      <button class="rn-icobtn rn-back-btn" id="rn-btn-back" type="button" title="返回主界面 (Esc)" hidden>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <div class="rn-logo" id="rn-hdr-logo">RN</div>
       <div class="rn-titles">
-        <h1 class="rn-title">RedNote Manager</h1>
-        <div class="rn-sub-titles">
+        <h1 class="rn-title" id="rn-title">RedNote Manager</h1>
+        <div class="rn-sub-titles" id="rn-hdr-subs-main">
           <span class="rn-hint" id="rn-hint">小红书主页</span>
           <span class="rn-safe-hint">🛡️ 安全保护中</span>
+        </div>
+        <div class="rn-sub-titles" id="rn-hdr-subs-settings" hidden>
+          <span class="rn-hint">运行参数 · 智能打标 · 外观 · 工具</span>
         </div>
       </div>
       <div class="rn-hdr-actions">
@@ -31,14 +39,98 @@
             <circle cx="12" cy="11.4" r="1.1" fill="#FFFFFF"/>
           </svg>
         </button>
-        <button class="rn-icobtn" id="rn-gear" type="button" title="设置与维护">⚙</button>
+        <button class="rn-icobtn" id="rn-gear" type="button" title="偏好设置与维护">⚙</button>
       </div>
     </header>
 
     <div class="rn-body">
-      <!-- 设置与维护抽屉 (点击右上角 ⚙ 展开/收起) -->
-      <div class="rn-settings" id="rn-settings" hidden>
-        <div class="rn-settings-section">
+      <!-- 视图 1：主工作区视图 (默认展示) -->
+      <div class="rn-view rn-view-main" id="rn-main-view">
+        <!-- 模式状态指示条（跟随左侧小红书页面） -->
+        <div class="rn-mode-banner" id="rn-mode-banner" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
+          <div class="rn-mode-info">
+            <span class="rn-mode-icon" id="rn-mode-icon">⭐</span>
+            <div class="rn-mode-text-wrap">
+              <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
+              <span class="rn-mode-sub" id="rn-mode-sub">已载入 0 篇笔记 · 跟随网页</span>
+            </div>
+          </div>
+          <span class="rn-mode-badge" id="rn-mode-badge">0</span>
+        </div>
+
+        <!-- 提示 / 警告 -->
+        <div class="rn-alert" id="rn-alert" hidden></div>
+
+        <!-- 数据统计看板 -->
+        <div class="rn-stats">
+          <div class="rn-stat"><b id="rn-s-cand">0</b><span>候选</span></div>
+          <div class="rn-stat"><b id="rn-s-sel" class="rn-acc">0</b><span>已勾选</span></div>
+          <div class="rn-stat"><b id="rn-s-ok" class="rn-ok">0</b><span>已处理</span></div>
+          <div class="rn-stat"><b id="rn-s-fail" class="rn-bad">0</b><span>失败</span></div>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="rn-progress"><i id="rn-bar"></i></div>
+
+        <!-- 主控制按钮 -->
+        <div class="rn-row">
+          <button class="rn-btn" id="rn-scan" type="button" title="读取当前页面列表（按住 Shift 点击可清空缓存全新读取）">① 读取列表</button>
+          <button class="rn-btn rn-primary" id="rn-start" type="button">取消收藏</button>
+          <button class="rn-btn rn-stop" id="rn-stop" type="button" disabled title="仅在批量执行运行中时激活，可随时手动停止">停止</button>
+        </div>
+
+        <!-- 搜索筛选 -->
+        <div class="rn-search">
+          <div class="rn-search-box rn-grow">
+            <input class="rn-input rn-grow rn-search-input" id="rn-q" type="text" placeholder="搜索已读笔记：标题 / 片段 / id，-词 排除" autocomplete="off" />
+            <button class="rn-search-clear" id="rn-search-clear" type="button" title="清空搜索词 (Esc)" hidden>×</button>
+          </div>
+          <span class="rn-hit" id="rn-hit">0/0</span>
+        </div>
+
+        <!-- 批量选择工具栏 -->
+        <div class="rn-tools">
+          <button class="rn-btn rn-mini" id="rn-sel-all" type="button" title="勾选当前搜索命中的全部未处理笔记">全选命中</button>
+          <button class="rn-btn rn-mini" id="rn-sel-invert" type="button">反选</button>
+          <button class="rn-btn rn-mini" id="rn-sel-clear" type="button">清空</button>
+          <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">✨ AI 分类</button>
+          <button class="rn-btn rn-mini" id="rn-btn-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>
+          <span style="flex:1"></span>
+          <span class="rn-selcount" id="rn-sel-count">已选 0</span>
+        </div>
+
+        <!-- AI 标签胶囊筛选栏（分析后或有缓存标签时展示） -->
+        <div class="rn-tag-filter-bar" id="rn-tag-filter-bar" hidden>
+          <div class="rn-tag-chips" id="rn-tag-chips"></div>
+        </div>
+
+        <!-- 候选笔记列表 -->
+        <div class="rn-list" id="rn-list">
+          <div class="rn-empty">正在连接小红书页面…</div>
+        </div>
+
+        <!-- 底部操作记录栏 -->
+        <div class="rn-log-panel">
+          <div class="rn-log-header">
+            <div class="rn-log-title">
+              <span>📋 操作记录</span>
+            </div>
+            <div class="rn-log-actions">
+              <button class="rn-btn rn-mini rn-log-diag-btn" id="rn-log-diag" type="button" title="一键运行全景诊断并自动复制诊断日志，方便排查">
+                🔍 诊断并复制
+              </button>
+              <button class="rn-btn rn-mini rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作（单篇或批量）" disabled>
+                ↩️ 撤销上次
+              </button>
+            </div>
+          </div>
+          <div class="rn-log" id="rn-log"></div>
+        </div>
+      </div>
+
+      <!-- 视图 2：偏好设置与维护视图 (点击右上角 ⚙ 全屏平滑切入，独享垂直高度，绝不挤压主工作区) -->
+      <div class="rn-view rn-view-settings" id="rn-settings" hidden>
+        <div class="rn-settings-card">
           <div class="rn-settings-hd">⚙️ 运行参数</div>
           <div class="rn-field">
             <label>操作间隔</label>
@@ -62,7 +154,7 @@
           </div>
         </div>
 
-        <div class="rn-settings-section">
+        <div class="rn-settings-card">
           <div class="rn-settings-hd">🤖 AI 智能打标设置 (DeepSeek)</div>
           <div class="rn-field">
             <label>API Key</label>
@@ -87,7 +179,7 @@
           </div>
         </div>
 
-        <div class="rn-settings-section">
+        <div class="rn-settings-card">
           <div class="rn-settings-hd">🎨 外观主题</div>
           <div class="rn-field">
             <label>主题模式</label>
@@ -99,7 +191,7 @@
           </div>
         </div>
 
-        <div class="rn-settings-section">
+        <div class="rn-settings-card">
           <div class="rn-settings-hd">🛠️ 维护与高级工具</div>
           <div class="rn-row rn-settings-actions">
             <button class="rn-btn rn-mini" id="rn-refresh" type="button" title="清空独立缓存并重新从页面读取">刷新缓存</button>
@@ -109,7 +201,7 @@
           </div>
         </div>
 
-        <div class="rn-settings-section rn-sponsor-section">
+        <div class="rn-settings-card rn-sponsor-section">
           <div class="rn-settings-hd">
             <svg class="rn-cup-icon rn-cup-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M7 6.5C7 5.67 7.67 5 8.5 5H15.5C16.33 5 17 5.67 17 6.5V7H7V6.5Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="0.8"/>
@@ -138,87 +230,6 @@
         <div class="rn-note">
           在小红书页面卡片左上角可以直接勾选（按住 Shift 支持区间多选）。真实操作已包含安全限速。
         </div>
-      </div>
-
-      <!-- 模式状态指示条（跟随左侧小红书页面） -->
-      <div class="rn-mode-banner" id="rn-mode-banner" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
-        <div class="rn-mode-info">
-          <span class="rn-mode-icon" id="rn-mode-icon">⭐</span>
-          <div class="rn-mode-text-wrap">
-            <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
-            <span class="rn-mode-sub" id="rn-mode-sub">已载入 0 篇笔记 · 跟随网页</span>
-          </div>
-        </div>
-        <span class="rn-mode-badge" id="rn-mode-badge">0</span>
-      </div>
-
-      <!-- 提示 / 警告 -->
-      <div class="rn-alert" id="rn-alert" hidden></div>
-
-      <!-- 数据统计看板 -->
-      <div class="rn-stats">
-        <div class="rn-stat"><b id="rn-s-cand">0</b><span>候选</span></div>
-        <div class="rn-stat"><b id="rn-s-sel" class="rn-acc">0</b><span>已勾选</span></div>
-        <div class="rn-stat"><b id="rn-s-ok" class="rn-ok">0</b><span>已处理</span></div>
-        <div class="rn-stat"><b id="rn-s-fail" class="rn-bad">0</b><span>失败</span></div>
-      </div>
-
-      <!-- 进度条 -->
-      <div class="rn-progress"><i id="rn-bar"></i></div>
-
-      <!-- 主控制按钮 -->
-      <div class="rn-row">
-        <button class="rn-btn" id="rn-scan" type="button" title="读取当前页面列表（按住 Shift 点击可清空缓存全新读取）">① 读取列表</button>
-        <button class="rn-btn rn-primary" id="rn-start" type="button">取消收藏</button>
-        <button class="rn-btn rn-stop" id="rn-stop" type="button" disabled title="仅在批量执行运行中时激活，可随时手动停止">停止</button>
-      </div>
-
-      <!-- 搜索筛选 -->
-      <div class="rn-search">
-        <div class="rn-search-box rn-grow">
-          <input class="rn-input rn-grow rn-search-input" id="rn-q" type="text" placeholder="搜索已读笔记：标题 / 片段 / id，-词 排除" autocomplete="off" />
-          <button class="rn-search-clear" id="rn-search-clear" type="button" title="清空搜索词 (Esc)" hidden>×</button>
-        </div>
-        <span class="rn-hit" id="rn-hit">0/0</span>
-      </div>
-
-      <!-- 批量选择工具栏 -->
-      <div class="rn-tools">
-        <button class="rn-btn rn-mini" id="rn-sel-all" type="button" title="勾选当前搜索命中的全部未处理笔记">全选命中</button>
-        <button class="rn-btn rn-mini" id="rn-sel-invert" type="button">反选</button>
-        <button class="rn-btn rn-mini" id="rn-sel-clear" type="button">清空</button>
-        <button class="rn-btn rn-mini rn-btn-ai" id="rn-btn-ai" type="button" title="使用 DeepSeek 智能分析笔记分类与时效/营销属性">✨ AI 分类</button>
-        <button class="rn-btn rn-mini" id="rn-btn-stack" type="button" title="以叠卡形式逐篇浏览并快速操作">🗂️ 叠卡浏览</button>
-        <span style="flex:1"></span>
-        <span class="rn-selcount" id="rn-sel-count">已选 0</span>
-      </div>
-
-      <!-- AI 标签胶囊筛选栏（分析后或有缓存标签时展示） -->
-      <div class="rn-tag-filter-bar" id="rn-tag-filter-bar" hidden>
-        <div class="rn-tag-chips" id="rn-tag-chips"></div>
-      </div>
-
-      <!-- 候选笔记列表 -->
-      <div class="rn-list" id="rn-list">
-        <div class="rn-empty">正在连接小红书页面…</div>
-      </div>
-
-      <!-- 底部操作记录栏 -->
-      <div class="rn-log-panel">
-        <div class="rn-log-header">
-          <div class="rn-log-title">
-            <span>📋 操作记录</span>
-          </div>
-          <div class="rn-log-actions">
-            <button class="rn-btn rn-mini rn-log-diag-btn" id="rn-log-diag" type="button" title="一键运行全景诊断并自动复制诊断日志，方便排查">
-              🔍 诊断并复制
-            </button>
-            <button class="rn-btn rn-mini rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作（单篇或批量）" disabled>
-              ↩️ 撤销上次
-            </button>
-          </div>
-        </div>
-        <div class="rn-log" id="rn-log"></div>
       </div>
     </div>
 

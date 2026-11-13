@@ -2834,6 +2834,137 @@ test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支
   assert.strictEqual(mockResolveEffectiveTheme(undefined, true), 'dark', '未定义时默认 auto，随系统深色解析为 dark');
 });
 
+test('偏好设置全屏平滑切页交互架构 (Option A: View Switcher 杜绝数据面板挤压)', () => {
+  // 1. 验证 HTML 结构：主视图与偏好设置视图平级隔离，并具备专属导航头元素
+  const htmlPath = path.join(__dirname, '../src/sidepanel/sidepanel.html');
+  const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+
+  // 顶栏元素
+  assert.strictEqual(htmlContent.includes('id="rn-btn-back"'), true, '侧边栏顶栏包含返回主界面按钮 #rn-btn-back');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-logo"'), true, '顶栏 Logo 具备独立 ID 用于切页控制');
+  assert.strictEqual(htmlContent.includes('id="rn-title"'), true, '顶栏主标题具备 ID 用于切页动态展示');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-main"'), true, '包含主工作区副标题组 #rn-hdr-subs-main');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-settings"'), true, '包含设置页面专属副标题组 #rn-hdr-subs-settings');
+  assert.strictEqual(htmlContent.includes('id="rn-gear"'), true, '顶栏保留偏好设置入口齿轮按钮');
+
+  // 视图平级隔离结构
+  assert.strictEqual(htmlContent.includes('id="rn-main-view"'), true, '主体区域包含独立主视图容器 #rn-main-view');
+  assert.strictEqual(htmlContent.includes('id="rn-settings"'), true, '主体区域包含独立偏好设置容器 #rn-settings');
+  assert.strictEqual(htmlContent.includes('class="rn-view rn-view-main"'), true, '主视图带有 .rn-view 与 .rn-view-main 类');
+  assert.strictEqual(htmlContent.includes('class="rn-view rn-view-settings"'), true, '设置视图带有 .rn-view 与 .rn-view-settings 类');
+  assert.strictEqual(htmlContent.includes('class="rn-settings-card"'), true, '设置项以卡片式进行分组 (.rn-settings-card)');
+
+  // 2. 验证 CSS 样式：零推挤排版与平滑淡入动画
+  const cssPath = path.join(__dirname, '../src/sidepanel/sidepanel.css');
+  const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+  assert.strictEqual(cssContent.includes('.rn-body {'), true, '包含 .rn-body 样式');
+  assert.strictEqual(cssContent.includes('overflow: hidden'), true, '.rn-body 采用视口级 overflow: hidden');
+  assert.strictEqual(cssContent.includes('.rn-view {'), true, '包含 .rn-view 统一视图容器定义');
+  assert.strictEqual(cssContent.includes('rnViewFadeIn'), true, '包含平滑切页动画 rnViewFadeIn');
+  assert.strictEqual(cssContent.includes('.rn-back-btn[hidden]'), true, '包含返回按钮与Logo隐藏控制');
+  assert.strictEqual(cssContent.includes('.rn-settings-card'), true, '包含设置卡片式卡片化样式');
+
+  // 3. 验证 JS 视图切换引擎逻辑
+  const jsPath = path.join(__dirname, '../src/sidepanel/sidepanel.js');
+  const jsContent = fs.readFileSync(jsPath, 'utf8');
+
+  assert.strictEqual(jsContent.includes('function rnSetView'), true, 'JS 包含核心视图切换引擎 rnSetView');
+  assert.strictEqual(jsContent.includes("rnSetView('settings')"), true, '齿轮按钮与无Key拦截时调用 rnSetView("settings")');
+  assert.strictEqual(jsContent.includes("rnSetView('main')"), true, '返回按钮与 Esc 键触发 rnSetView("main")');
+
+  // 4. 模拟 DOM 运行环境，严密测试视图切换状态机
+  const mockElements = {
+    'rn-main-view': { hidden: false },
+    'rn-settings': { hidden: true, scrollTop: 120 },
+    'rn-btn-back': { hidden: true },
+    'rn-hdr-logo': { hidden: false },
+    'rn-title': { textContent: 'RedNote Manager' },
+    'rn-hdr-subs-main': { hidden: false },
+    'rn-hdr-subs-settings': { hidden: true },
+    'rn-gear': {
+      hidden: false,
+      classList: {
+        classes: new Set(),
+        toggle(cls, force) {
+          if (force) this.classes.add(cls);
+          else this.classes.delete(cls);
+        }
+      }
+    }
+  };
+
+  function mock$ (id) {
+    return mockElements[id] || null;
+  }
+
+  let mockSettingsOpen = false;
+  function mockRnSetView(viewName) {
+    const isSettings = viewName === 'settings';
+    mockSettingsOpen = isSettings;
+    const mainView = mock$('rn-main-view');
+    const settingsView = mock$('rn-settings');
+    const backBtn = mock$('rn-btn-back');
+    const logoEl = mock$('rn-hdr-logo');
+    const titleEl = mock$('rn-title');
+    const subMain = mock$('rn-hdr-subs-main');
+    const subSettings = mock$('rn-hdr-subs-settings');
+    const gearBtn = mock$('rn-gear');
+
+    if (mainView) mainView.hidden = isSettings;
+    if (settingsView) settingsView.hidden = !isSettings;
+    if (backBtn) backBtn.hidden = !isSettings;
+    if (logoEl) logoEl.hidden = isSettings;
+    if (gearBtn) {
+      gearBtn.hidden = isSettings;
+      gearBtn.classList.toggle('rn-active', isSettings);
+    }
+
+    if (titleEl) titleEl.textContent = isSettings ? '偏好设置与维护' : 'RedNote Manager';
+    if (subMain) subMain.hidden = isSettings;
+    if (subSettings) subSettings.hidden = !isSettings;
+
+    if (isSettings && settingsView) {
+      settingsView.scrollTop = 0;
+    }
+  }
+
+  // 初始状态检查
+  assert.strictEqual(mockElements['rn-main-view'].hidden, false, '初始状态主工作区可见');
+  assert.strictEqual(mockElements['rn-settings'].hidden, true, '初始状态偏好设置隐藏');
+  assert.strictEqual(mockElements['rn-btn-back'].hidden, true, '初始状态返回按钮隐藏');
+  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, '初始状态Logo展示');
+  assert.strictEqual(mockElements['rn-gear'].hidden, false, '初始状态齿轮展示');
+  assert.strictEqual(mockElements['rn-title'].textContent, 'RedNote Manager', '初始标题为 RedNote Manager');
+  assert.strictEqual(mockElements['rn-hdr-subs-main'].hidden, false, '初始主副标题可见');
+  assert.strictEqual(mockElements['rn-hdr-subs-settings'].hidden, true, '初始设置副标题隐藏');
+
+  // 执行切换到偏好设置视图
+  mockRnSetView('settings');
+  assert.strictEqual(mockSettingsOpen, true);
+  assert.strictEqual(mockElements['rn-main-view'].hidden, true, '切到设置后主工作区被隐藏（不占位不挤压）');
+  assert.strictEqual(mockElements['rn-settings'].hidden, false, '切到设置后设置页完整独占展示');
+  assert.strictEqual(mockElements['rn-settings'].scrollTop, 0, '切入时自动回到顶部');
+  assert.strictEqual(mockElements['rn-btn-back'].hidden, false, '返回按钮显示');
+  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, true, 'Logo 隐去以留出返回箭头空间');
+  assert.strictEqual(mockElements['rn-gear'].hidden, true, '齿轮隐去');
+  assert.strictEqual(mockElements['rn-title'].textContent, '偏好设置与维护', '顶栏标题更新为偏好设置与维护');
+  assert.strictEqual(mockElements['rn-hdr-subs-main'].hidden, true, '主副标题隐藏');
+  assert.strictEqual(mockElements['rn-hdr-subs-settings'].hidden, false, '展示设置专属功能副标题');
+
+  // 执行返回主视图
+  mockRnSetView('main');
+  assert.strictEqual(mockSettingsOpen, false);
+  assert.strictEqual(mockElements['rn-main-view'].hidden, false, '返回后主工作区恢复可见');
+  assert.strictEqual(mockElements['rn-settings'].hidden, true, '偏好设置完全隐藏');
+  assert.strictEqual(mockElements['rn-btn-back'].hidden, true, '返回按钮隐藏');
+  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 重新恢复');
+  assert.strictEqual(mockElements['rn-gear'].hidden, false, '齿轮按钮重新恢复');
+  assert.strictEqual(mockElements['rn-title'].textContent, 'RedNote Manager', '顶栏标题恢复为 RedNote Manager');
+  assert.strictEqual(mockElements['rn-hdr-subs-main'].hidden, false, '主副标题恢复');
+  assert.strictEqual(mockElements['rn-hdr-subs-settings'].hidden, true, '设置副标题隐藏');
+});
+
 
 
 

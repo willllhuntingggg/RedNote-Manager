@@ -739,6 +739,42 @@ function closeSponsorModal() {
   }
 }
 
+/* ============================ 视图切换引擎 (Option A: 全屏平滑切页) ============================ */
+
+function rnSetView(viewName) {
+  const isSettings = viewName === 'settings';
+  settingsOpen = isSettings;
+  const mainView = $('rn-main-view');
+  const settingsView = $('rn-settings');
+  const backBtn = $('rn-btn-back');
+  const logoEl = $('rn-hdr-logo');
+  const titleEl = $('rn-title');
+  const subMain = $('rn-hdr-subs-main');
+  const subSettings = $('rn-hdr-subs-settings');
+  const gearBtn = $('rn-gear');
+
+  if (mainView) mainView.hidden = isSettings;
+  if (settingsView) settingsView.hidden = !isSettings;
+  if (backBtn) backBtn.hidden = !isSettings;
+  if (logoEl) logoEl.hidden = isSettings;
+  if (gearBtn) {
+    gearBtn.hidden = isSettings;
+    gearBtn.classList.toggle('rn-active', isSettings);
+  }
+
+  if (titleEl) titleEl.textContent = isSettings ? '偏好设置与维护' : 'RedNote Manager';
+  if (subMain) subMain.hidden = isSettings;
+  if (subSettings) subSettings.hidden = !isSettings;
+
+  if (isSettings && settingsView) {
+    settingsView.scrollTop = 0;
+  }
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.rnSetView = rnSetView;
+}
+
 /* ============================ 事件绑定 ============================ */
 
 function bindEvents() {
@@ -1066,9 +1102,7 @@ function bindEvents() {
       }
 
       if (!cfg || !cfg.apiKey || !cfg.apiKey.trim()) {
-        settingsOpen = true;
-        $('rn-settings').hidden = false;
-        $('rn-gear').classList.add('rn-active');
+        rnSetView('settings');
         const keyInput = $('rn-ai-key');
         if (keyInput) keyInput.focus();
         alert('请先在「⚙️ 设置与维护」中填写 DeepSeek API Key 并点击保存（可前往 platform.deepseek.com 获取）。');
@@ -1194,12 +1228,21 @@ function bindEvents() {
     }
   });
 
-  // 设置面板切换
-  $('rn-gear').addEventListener('click', function () {
-    settingsOpen = !settingsOpen;
-    $('rn-settings').hidden = !settingsOpen;
-    $('rn-gear').classList.toggle('rn-active', settingsOpen);
-  });
+  // 设置面板切换 (平滑切至全屏设置视图)
+  const gearBtn = $('rn-gear');
+  if (gearBtn) {
+    gearBtn.addEventListener('click', function () {
+      rnSetView('settings');
+    });
+  }
+
+  // 返回主视图按钮
+  const backBtn = $('rn-btn-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', function () {
+      rnSetView('main');
+    });
+  }
 
   // 设置项保存
   const settingFields = ['minDelay', 'maxDelay', 'maxPerRun', 'cooldownEvery', 'cooldownMs'];
@@ -1372,8 +1415,12 @@ function bindEvents() {
     });
   }
   window.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape' && sponsorModal && !sponsorModal.hidden) {
-      closeSponsorModal();
+    if (ev.key === 'Escape') {
+      if (sponsorModal && !sponsorModal.hidden) {
+        closeSponsorModal();
+      } else if (settingsOpen) {
+        rnSetView('main');
+      }
     }
   });
 
