@@ -633,15 +633,18 @@
     currentScannedTabType = targetTab;
     tabSwitchGeneration++;
 
+    // 【方案 1 核心】：单工作区物理独占！换仓时彻底重置所有模式的候选池与勾选集！
     // 【方案 A 核心】：换仓时彻底重置当前工作区！
-    // 销毁旧工作区候选池，防止任何前序 Tab 的卡片残留在内存中引起数据污染！
+    // 销毁旧工作区候选池，物理归零，彻底消灭任何前序 Tab 的残留！
+    state.candidates = [];
+    state.selected.clear();
+    state.modeCache = { uncollect: [], unlike: [] };
+    state.modeSelected = { uncollect: new Map(), unlike: new Map() };
     if (targetMode) {
       state.settings.mode = targetMode;
-      state.modeCache[targetMode] = [];
-      state.candidates = state.modeCache[targetMode];
-      state.selected.clear();
       saveSettings();
     }
+    state.anchorId = null;
 
     clearPageCards();
     broadcastState();
@@ -704,8 +707,12 @@
     }
 
     const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
-    if (!state.modeCache[targetMode]) state.modeCache[targetMode] = [];
-    const targetList = state.modeCache[targetMode];
+
+    // 严格同源校验：必须与当前工作区设定的模式完全一致！
+    if (state.settings.mode !== targetMode) {
+      beginTabTransition(actualTab);
+      return false;
+    }
 
     const cards = scanCards(actualTab);
     if (!cards.length) return false;
@@ -726,14 +733,14 @@
 
     let changed = false;
     const existingMap = new Map();
-    for (let i = 0; i < targetList.length; i++) {
-      existingMap.set(targetList[i].id, targetList[i]);
+    for (let i = 0; i < state.candidates.length; i++) {
+      existingMap.set(state.candidates[i].id, state.candidates[i]);
     }
 
     for (let i = 0; i < validCards.length; i++) {
       const c = validCards[i];
       if (!existingMap.has(c.id)) {
-        targetList.push(c);
+        state.candidates.push(c);
         existingMap.set(c.id, c);
         changed = true;
       } else {
@@ -753,6 +760,7 @@
       }
     }
 
+    state.modeCache[state.settings.mode] = state.candidates;
     syncActiveModePointers();
     return changed;
   }
@@ -761,9 +769,9 @@
 
   function detectTabFromText(text) {
     const clean = String(text || '').replace(/\s+/g, '');
-    if (clean.indexOf('全部笔记') !== -1) return 'collect';
     if (/(?:赞过|点赞|喜欢)/.test(clean)) return 'like';
     if (/(?:收藏|合集)/.test(clean)) return 'collect';
+    if (clean.indexOf('全部笔记') !== -1) return 'collect';
     if (/(?:笔记|发布|原创|图文|视频)/.test(clean)) return 'notes';
     return '';
   }
@@ -774,10 +782,20 @@
     return OWN_NOTE_TAB_KEYWORDS.some(function (k) { return text.indexOf(k) === 0; });
   }
 
+  function isMainTabElement(el) {
+    if (!el) return false;
+    const text = (el.textContent || '').trim().replace(/\s+/g, '');
+    if (!text) return false;
+    // 严格排除纯子标签本身（全部笔记、专辑、合集）被误当成主标签
+    if (/^(?:全部笔记|全部|专辑|合集)$/.test(text)) return false;
+    const detected = detectTabFromText(text);
+    return detected === 'like' || detected === 'collect' || detected === 'notes';
+  }
+
   function isTabItemActive(el) {
     if (!el) return false;
     // 排除子标签本身（如全部笔记、专辑）被误当成主标签
-    if (el.closest && el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"]')) return false;
+    if (!isMainTabElement(el)) return false;
     // 阶段 1：首选显式激活标记（aria-selected 或 active class）
     if (el.getAttribute && el.getAttribute('aria-selected') === 'true') return true;
     if (el.classList) {
@@ -798,36 +816,32 @@
     for (let h = 0; h < headers.length; h++) {
       if (headers[h].closest && headers[h].closest('.feeds-container, .note-list, #rn-manager-host')) continue;
       const candidates = $$('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]', headers[h])
-        .filter(function (el) {
-          return !el.closest || !el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"]');
-        });
+        .filter(isMainTabElement);
       let hasCollect = false;
       let hasLikeOrNotes = false;
-      const validInHeader = [];
       for (let i = 0; i < candidates.length; i++) {
         const d = detectTabFromText(candidates[i].textContent);
         if (d === 'collect') hasCollect = true;
         if (d === 'like' || d === 'notes') hasLikeOrNotes = true;
-        if (d === 'collect' || d === 'like' || d === 'notes') {
-          validInHeader.push(candidates[i]);
-        }
       }
-      if (hasCollect && hasLikeOrNotes && validInHeader.length >= 2) {
-        return validInHeader;
+      if (hasCollect && hasLikeOrNotes && candidates.length >= 2) {
+        return candidates;
       }
     }
 
     // 2. 兜底：全页面扫描，严格排除笔记卡片容器与插件自身面板
     const all = $$('#userPageTabs .reds-tab-item, .user-page .reds-tab-item, .reds-tabs-header .reds-tab-item, .reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]');
     const matched = all.filter(function (el) {
-      if (el.closest && el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"], .tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
-      const detected = detectTabFromText(el.textContent);
-      return detected === 'like' || detected === 'collect' || detected === 'notes';
+      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
+      return isMainTabElement(el);
     });
     const uniq = [];
     matched.forEach(function (el) { if (uniq.indexOf(el) === -1) uniq.push(el); });
     if (uniq.length >= 2) return uniq;
-    return all.filter(function (el) { return !el.closest || !el.closest('.sub-tab-list, [class*="sub-tab"], [class*="subTab"], .tab-content-item, .feeds-container, .note-list, #rn-manager-host'); });
+    return all.filter(function (el) {
+      if (el.closest && el.closest('.tab-content-item, .feeds-container, .note-list, #rn-manager-host')) return false;
+      return isMainTabElement(el);
+    });
   }
 
   function getTabFromUrl() {

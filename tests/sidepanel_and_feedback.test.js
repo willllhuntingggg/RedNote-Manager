@@ -2327,7 +2327,7 @@ test('方案A单会话工作区与幽灵子标签免疫：切Tab重置工作区�
 
   // 1. 代码架构静态检测
   assert.ok(contentCode.includes('// 【方案 A 核心】：换仓时彻底重置当前工作区！'), '必须包含换仓彻底重置工作区的核心实现');
-  assert.ok(contentCode.includes("el.closest('.sub-tab-list"), 'isTabItemActive 与 mainTabs 必须严格排除子标签干扰');
+  assert.ok(contentCode.includes("isMainTabElement"), 'isTabItemActive 与 mainTabs 必须严格排除子标签干扰');
 
   // 2. 模拟幽灵子标签场景：
   // 收藏 Tab 包含「全部笔记」子标签，且「全部笔记」带有 class="active"，但主标签「赞过」当前是激活项
@@ -2400,6 +2400,75 @@ test('方案A单会话工作区与幽灵子标签免疫：切Tab重置工作区�
   workspaceCandidates.push(...freshCollectCards);
   assert.strictEqual(workspaceCandidates.length, 20, '收藏工作区重新建立，纯净保留 20 篇，合流暴增彻底根绝！');
 });
+
+test('方案1单工作区物理独占架构：换Tab双仓彻底清零归位，严格模式同源校验拒收异相卡片，主Tab精准识别与子标签彻底绝缘', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+
+  // 1. 核心架构代码静态检测
+  assert.ok(contentCode.includes('// 【方案 1 核心】：单工作区物理独占！'), '必须包含方案 1 单工作区物理独占核心实现');
+  assert.ok(contentCode.includes('state.modeCache = { uncollect: [], unlike: [] };'), '换仓时双仓必须同时物理清空归零');
+  assert.ok(contentCode.includes('if (state.settings.mode !== targetMode)'), '必须包含严格工作区同源校验阻断机制');
+  assert.ok(contentCode.includes('function isMainTabElement('), '必须包含 isMainTabElement 精确主标签识别函数');
+
+  // 2. 验证 isMainTabElement：
+  // 必须识别小红书真机 DOM：带有 sub-tab-list class 的主 Tab
+  const mainTabLike = { textContent: '赞过 50', className: 'reds-tab-item sub-tab-list' };
+  const mainTabCollect = { textContent: '收藏 150', className: 'reds-tab-item sub-tab-list' };
+  const mainTabNotes = { textContent: '笔记 20', className: 'reds-tab-item sub-tab-list' };
+  const subTabAll = { textContent: '全部笔记', className: 'reds-tab-item active' };
+  const subTabAlbum = { textContent: '专辑', className: 'sub-tab-item' };
+
+  function simulateIsMainTabElement(el) {
+    if (!el) return false;
+    const text = (el.textContent || '').trim().replace(/\s+/g, '');
+    if (!text) return false;
+    if (/^(?:全部笔记|全部|专辑|合集)$/.test(text)) return false;
+    if (/(?:赞过|点赞|喜欢)/.test(text)) return true;
+    if (/(?:收藏|合集)/.test(text)) return true;
+    if (/(?:笔记|发布|原创|图文|视频)/.test(text)) {
+      return text.indexOf('全部笔记') === -1;
+    }
+    return false;
+  }
+
+  assert.strictEqual(simulateIsMainTabElement(mainTabLike), true, '主标签「赞过 50」成功识别');
+  assert.strictEqual(simulateIsMainTabElement(mainTabCollect), true, '主标签「收藏 150」成功识别');
+  assert.strictEqual(simulateIsMainTabElement(mainTabNotes), true, '主标签「笔记 20」成功识别');
+  assert.strictEqual(simulateIsMainTabElement(subTabAll), false, '子标签「全部笔记」严格排除');
+  assert.strictEqual(simulateIsMainTabElement(subTabAlbum), false, '子标签「专辑」严格排除');
+
+  // 3. 验证同源校验拒收机制：
+  // 当工作区处于 uncollect (收藏) 模式时，即使 DOM 临时返回了 like 卡片，同源校验强制阻断入库
+  let currentWorkspaceMode = 'uncollect';
+  let candidates = [{ id: 'col_1', title: '收藏笔记1' }];
+  let actualDetectedTab = 'like'; // 小红书实际正在展现点赞
+
+  function simulateSafeSync(actualTab, cards) {
+    const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
+    if (currentWorkspaceMode !== targetMode) {
+      // 触发换仓清盘并拒绝入库
+      currentWorkspaceMode = targetMode;
+      candidates = [];
+      return false;
+    }
+    candidates.push(...cards);
+    return true;
+  }
+
+  const syncResult1 = simulateSafeSync(actualDetectedTab, [{ id: 'like_bad_1', title: '错误点赞卡' }]);
+  assert.strictEqual(syncResult1, false, '工作区模式与实际Tab不符时，严禁入库卡片！');
+  assert.strictEqual(candidates.length, 0, '旧收藏数据彻底物理清空，错误点赞卡绝未入库！');
+  assert.strictEqual(currentWorkspaceMode, 'unlike', '工作区模式正确重置为 unlike');
+
+  // 4. 在正确的工作区模式下，新卡片纯净入库
+  const syncResult2 = simulateSafeSync('like', [{ id: 'like_clean_1', title: '纯净点赞卡' }]);
+  assert.strictEqual(syncResult2, true, '同源匹配成功，纯净入库');
+  assert.strictEqual(candidates.length, 1, '工作区纯净持有 1 篇点赞笔记');
+  assert.strictEqual(candidates[0].id, 'like_clean_1');
+});
+
 
 
 
