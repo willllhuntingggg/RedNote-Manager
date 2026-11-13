@@ -846,12 +846,29 @@ function bindEvents() {
     scanBtn.addEventListener('click', async function (ev) {
       const isBusy = (lastState && lastState.running) || (lastState && lastState.scanning);
       if (isBusy) {
-        await sendToTab('RN_ACTION', { action: 'stop' });
+        // 乐观即刻切为普通读取状态，无延迟响应用户操作
+        scanBtn.textContent = '读取列表';
+        scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
+        scanBtn.title = '读取当前页面列表（按住 Shift 点击可清空缓存全新读取）';
+        if (lastState) {
+          lastState.running = false;
+          lastState.scanning = false;
+        }
+        const res = await sendToTab('RN_ACTION', { action: 'stop' });
+        if (res && res.state) applyState(res.state);
       } else {
+        // 乐观即刻切换为停止按钮状态，红底醒目并提供即时视觉反馈
+        scanBtn.textContent = '⏹ 停止';
+        scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
+        scanBtn.title = '点击停止当前操作';
+        if (lastState) {
+          lastState.scanning = true;
+        }
         if (ev && ev.shiftKey) {
           await sendToTab('RN_REFRESH_CACHE');
         }
-        await sendToTab('RN_ACTION', { action: 'scan' });
+        const res = await sendToTab('RN_ACTION', { action: 'scan' });
+        if (res && res.state) applyState(res.state);
       }
       requestState();
     });
@@ -860,7 +877,14 @@ function bindEvents() {
   const startBtn = $('rn-start');
   if (startBtn) {
     startBtn.addEventListener('click', async function () {
-      await sendToTab('RN_ACTION', { action: 'start' });
+      if (scanBtn) {
+        scanBtn.textContent = '⏹ 停止';
+        scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
+        scanBtn.title = '点击停止当前操作';
+      }
+      if (lastState) lastState.running = true;
+      const res = await sendToTab('RN_ACTION', { action: 'start' });
+      if (res && res.state) applyState(res.state);
       requestState();
     });
   }
@@ -868,7 +892,17 @@ function bindEvents() {
   const stopBtn = $('rn-stop');
   if (stopBtn) {
     stopBtn.addEventListener('click', async function () {
-      await sendToTab('RN_ACTION', { action: 'stop' });
+      if (scanBtn) {
+        scanBtn.textContent = '读取列表';
+        scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
+        scanBtn.title = '读取当前页面列表（按住 Shift 点击可清空缓存全新读取）';
+      }
+      if (lastState) {
+        lastState.running = false;
+        lastState.scanning = false;
+      }
+      const res = await sendToTab('RN_ACTION', { action: 'stop' });
+      if (res && res.state) applyState(res.state);
       requestState();
     });
   }

@@ -2962,6 +2962,38 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 恢复且始终呈现');
 });
 
+test('界面细节与控制状态交互演进：已读取计数还原、停止态即刻响应与关闭按钮居中优化', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+
+  const htmlContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.html'), 'utf8');
+  const cssContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.css'), 'utf8');
+  const jsContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.js'), 'utf8');
+
+  // 1. 已读取计数还原在已勾选之前
+  const candIndex = htmlContent.indexOf('id="rn-s-cand"');
+  const selIndex = htmlContent.indexOf('id="rn-s-sel"');
+  assert.strictEqual(candIndex !== -1, true, '统计看板中已找回 #rn-s-cand 已读取计数');
+  assert.strictEqual(selIndex !== -1, true, '统计看板中包含 #rn-s-sel 已勾选计数');
+  assert.strictEqual(candIndex < selIndex, true, '已读取计数位于已勾选计数之前');
+
+  // 2. 取消点赞按钮上方冗余红线进度条已移除
+  assert.strictEqual(htmlContent.includes('<div class="rn-progress"><i id="rn-bar"></i></div>'), false, '主按钮上方冗余红线进度条已移除');
+
+  // 3. 统计网格升级为4列
+  assert.strictEqual(cssContent.includes('grid-template-columns: repeat(4, 1fr)'), true, '统计面板网格配置为 4 列对齐');
+
+  // 4. 关闭按钮与图标居中
+  assert.strictEqual(cssContent.includes('display: inline-flex !important'), true, '关闭按钮设置强制 flex 居中');
+  assert.strictEqual(cssContent.includes('display: inline-flex;\n  align-items: center;\n  justify-content: center;'), true, '通用图标按钮支持精准居中');
+
+  // 5. 停止态按钮醒目可视度与即时响应
+  assert.strictEqual(cssContent.includes('.rn-mode-scan-btn.rn-scanning'), true, '包含扫描/停止中高对比状态样式');
+  assert.strictEqual(cssContent.includes('#dc2626'), true, '停止状态具备高饱和高对比警示红色');
+  assert.strictEqual(jsContent.includes("scanBtn.textContent = '⏹ 停止'"), true, '点击扫描时具备 0ms 乐观即刻切换停止状态');
+});
+
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {
   const { execSync } = require('child_process');
   const path = require('path');

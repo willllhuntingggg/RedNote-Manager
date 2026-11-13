@@ -226,15 +226,18 @@ body {
 .rn-close-btn,
 .rn-back-btn {
   font-size: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   cursor: pointer;
+  padding: 0 !important;
 }
 
 .rn-close-btn svg,
 .rn-back-btn svg {
   display: block;
+  margin: auto;
+  pointer-events: none;
 }
 
 .rn-close-btn[hidden],
@@ -289,11 +292,16 @@ body {
 }
 
 .rn-icobtn {
-  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
   width: 28px;
   height: 28px;
-  line-height: 28px;
+  line-height: 1;
   text-align: center;
   border-radius: 8px;
   font-size: 15px;
@@ -301,6 +309,7 @@ body {
   border: 1px solid var(--border);
   color: var(--text-muted);
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .rn-icobtn:hover {
@@ -438,10 +447,19 @@ body {
 }
 
 .rn-mode-scan-btn.rn-scanning {
-  background: var(--danger-gradient);
-  border-color: transparent;
-  color: #fff;
-  animation: rnPulseStop 1.6s infinite ease-in-out;
+  background: #dc2626 !important;
+  background-image: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+  animation: rnPulseStop 1.4s infinite ease-in-out;
+}
+
+.rn-mode-scan-btn.rn-scanning:hover:not(:disabled) {
+  background: #b91c1c !important;
+  background-image: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.6);
 }
 
 @keyframes rnPulseStop {
@@ -543,7 +561,7 @@ body {
 /* 统计卡片 */
 .rn-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
@@ -571,20 +589,9 @@ body {
   color: var(--text-muted);
 }
 
-/* 进度条 */
+/* 进度条 (已精简隐蔽) */
 .rn-progress {
-  height: 4px;
-  border-radius: 99px;
-  background: var(--progress-bg);
-  overflow: hidden;
-}
-
-.rn-progress i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, #ff2e4d, #ff8f9f);
-  transition: width 0.25s ease;
+  display: none;
 }
 
 /* 按钮行 */
