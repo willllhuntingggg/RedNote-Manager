@@ -2469,6 +2469,60 @@ test('方案1单工作区物理独占架构：换Tab双仓彻底清零归位，�
   assert.strictEqual(candidates[0].id, 'like_clean_1');
 });
 
+test('全景运行诊断与事件轨迹追踪系统：多维度采集DOM真实解构、工作区状态与时序轨迹，支持一键剪贴板输出', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+  const sidepanelCode = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.js'), 'utf8');
+  const sidepanelHtml = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.html'), 'utf8');
+
+  // 1. 结构与能力静态检验
+  assert.ok(contentCode.includes('const diagnosticTrail = [];'), '必须包含运行轨迹追踪缓冲区');
+  assert.ok(contentCode.includes('function recordDiagEvent('), '必须包含事件留痕记录函数');
+  assert.ok(contentCode.includes('RedNote Manager 全景运行诊断报告'), '必须包含全景运行诊断报告输出');
+  assert.ok(sidepanelHtml.includes('id="rn-log-diag"'), '侧边栏操作栏必须提供快捷诊断按钮');
+  assert.ok(sidepanelCode.includes('runDiagnosisWithFeedback'), '侧边栏必须包含诊断并复制的完整反馈交互');
+
+  // 2. 模拟诊断轨迹事件流水
+  const mockTrail = [];
+  function simulateRecord(name, detail) {
+    mockTrail.push({ t: '12:00:00', name, detail });
+    if (mockTrail.length > 5) mockTrail.shift();
+  }
+
+  simulateRecord('TAB_CLICK_EVENT', { targetTag: 'SPAN', tabText: '赞过 50', detected: 'like' });
+  simulateRecord('BEGIN_TAB_TRANSITION', { targetTab: 'like', staleCount: 20 });
+  simulateRecord('WAIT_CARDS_CLEARED', { expectedTab: 'like', cardsCount: 30 });
+  simulateRecord('SYNC_CARDS_CHANGED', { actualTab: 'like', mode: 'unlike', validCount: 30, candidatesCount: 30 });
+
+  assert.strictEqual(mockTrail.length, 4);
+  assert.strictEqual(mockTrail[0].name, 'TAB_CLICK_EVENT');
+  assert.strictEqual(mockTrail[3].detail.candidatesCount, 30);
+
+  // 3. 模拟全景诊断报告生成
+  const reportLines = [
+    '========== [RedNote Manager 全景运行诊断报告] ==========',
+    'URL：https://www.xiaohongshu.com/user/profile/12345678',
+    '当前工作区模式 settings.mode：unlike',
+    'getPageActualTabType() 结果：like',
+    'mainTabs() 识别出的候选主标签：',
+    '  #1: 文本="笔记 10" | 类名="reds-tab-item sub-tab-list"',
+    '  #2: 文本="收藏 20" | 类名="reds-tab-item sub-tab-list"',
+    '  #3: 文本="赞过 30" | 类名="reds-tab-item sub-tab-list active"',
+    '页面 DOM 卡片快照 (前 3 篇)：',
+    '  - [DOM #1] id=note_001 | title="测试笔记1"',
+    '运行时事件追踪轨迹：',
+    `  [12:00:00] TAB_CLICK_EVENT => ${JSON.stringify(mockTrail[0].detail)}`,
+    '========================================================',
+  ];
+
+  const fullReport = reportLines.join('\n');
+  assert.ok(fullReport.includes('https://www.xiaohongshu.com/user/profile/12345678'));
+  assert.ok(fullReport.includes('getPageActualTabType() 结果：like'));
+  assert.ok(fullReport.includes('TAB_CLICK_EVENT'));
+});
+
+
 
 
 

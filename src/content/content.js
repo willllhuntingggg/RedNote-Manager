@@ -122,6 +122,20 @@
     if (kind === 'err') console.warn('[RedNote Manager]', msg);
   }
 
+  const diagnosticTrail = [];
+  function recordDiagEvent(name, detail) {
+    const entry = {
+      t: stamp(),
+      name: name,
+      detail: detail || {},
+    };
+    diagnosticTrail.push(entry);
+    if (diagnosticTrail.length > 40) diagnosticTrail.shift();
+    try {
+      console.log(`[RN-TRACE][${entry.t}][${name}]`, detail);
+    } catch (e) {}
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -595,6 +609,7 @@
     // 如果已经在目标 Tab 且无未决过渡，直接保持就绪状态
     if (currentScannedTabType === targetTab && !tabTransitionLock) return;
 
+    recordDiagEvent('BEGIN_TAB_TRANSITION', { targetTab: targetTab, prevScanned: currentScannedTabType, lock: tabTransitionLock, currentMode: state.settings.mode });
     abortActiveScan('切换标签至「' + (targetTab === 'like' ? '点赞' : (targetTab === 'collect' ? '收藏' : '发布笔记')) + '」');
 
     const targetMode = targetTab === 'like' ? 'unlike' : (targetTab === 'collect' ? 'uncollect' : '');
@@ -710,6 +725,7 @@
 
     // 严格同源校验：必须与当前工作区设定的模式完全一致！
     if (state.settings.mode !== targetMode) {
+      recordDiagEvent('SYNC_MISMATCH', { actualTab: actualTab, targetMode: targetMode, currentMode: state.settings.mode });
       beginTabTransition(actualTab);
       return false;
     }
@@ -762,6 +778,14 @@
 
     state.modeCache[state.settings.mode] = state.candidates;
     syncActiveModePointers();
+    if (changed) {
+      recordDiagEvent('SYNC_CARDS_CHANGED', {
+        actualTab: actualTab,
+        mode: state.settings.mode,
+        validCount: validCards.length,
+        candidatesCount: state.candidates.length,
+      });
+    }
     return changed;
   }
 
@@ -1727,6 +1751,13 @@
       const tab = ev.target && ev.target.closest && ev.target.closest('.reds-tab-item, [role="tab"], .tab-link, [class*="tab-item"]');
       if (tab) {
         const detected = detectTabFromText(tab.textContent);
+        recordDiagEvent('TAB_CLICK_EVENT', {
+          targetTag: ev.target.tagName,
+          tabText: (tab.textContent || '').trim().replace(/\s+/g, ' '),
+          detected: detected,
+          currentScanned: currentScannedTabType,
+          currentMode: state.settings.mode,
+        });
         if (detected) {
           if (detected !== currentScannedTabType) {
             beginTabTransition(detected);
@@ -2950,27 +2981,128 @@
 
   async function diagnose() {
     const lines = [];
+    const reportSections = [];
+    reportSections.push('========== [RedNote Manager 全景运行诊断报告] ==========');
+    reportSections.push('报告时间：' + new Date().toLocaleString());
+    reportSections.push('UA：' + (navigator.userAgent || ''));
+
+    // 1. 路由与用户
+    reportSections.push('\n--- 【1. 路由与用户状态】 ---');
+    reportSections.push('当前完整URL：' + location.href);
+    reportSections.push('Pathname：' + location.pathname);
+    reportSections.push('Search：' + (location.search || '(无)'));
+    reportSections.push('Hash：' + (location.hash || '(无)'));
     const p = await pingBridge();
-    lines.push('页面代理：' + (p
-      ? '正常，签名函数 ' + (p.signer ? '已就绪' : '缺失（刷新页面）') + '，接口域 ' + p.origin
-      : '无响应（脚本可能未注入）'));
+    const bridgeDesc = p
+      ? '正常 (签名函数 ' + (p.signer ? '已就绪' : '缺失') + '，接口域 ' + p.origin + ')'
+      : '无响应 (脚本可能未注入或页面失联)';
+    reportSections.push('页面代理 Bridge：' + bridgeDesc);
+    reportSections.push('博主信息：UID=' + (myProfileInfo.userId || '(未抓到)') + '，昵称=' + (myProfileInfo.nickname || '(未抓到)'));
+
+    lines.push('页面代理：' + bridgeDesc);
     lines.push('当前路径：' + location.pathname + location.search);
-    lines.push('页面识别：' + (getPageActualTabType() || '未知'));
-    lines.push('卡片节点：section.note-item=' + $$('section.note-item').length + '，.note-item=' + $$('.note-item').length);
-    lines.push('能解析出的笔记：' + scanCards().length + ' 篇');
+
+    // 2. 标签与模式识别
     const tabs = mainTabs();
-    lines.push('主标签：' + (tabs.length ? tabs.map(function (t) { return (t.textContent || '').trim().slice(0, 8); }).join(' | ') : '未找到'));
+    const curActive = activeTabEl();
+    const actualTab = getPageActualTabType();
+    const urlTab = getTabFromUrl();
+
+    lines.push('页面识别：' + (actualTab || '未知'));
+    lines.push('主标签数：' + tabs.length + ' (' + (tabs.map(function (t) { return (t.textContent || '').trim().slice(0, 8); }).join(' | ') || '无') + ')');
     lines.push('激活标签：' + (currentTabLabel() || '无法判定（不影响运行）'));
-    lines.push('滚动方式：' + (findScrollContainer() ? '内部容器' : 'window'));
+
+    reportSections.push('\n--- 【2. 标签与模式判定深度解构】 ---');
+    reportSections.push('当前工作区模式 settings.mode：' + state.settings.mode);
+    reportSections.push('当前锁定Tab currentScannedTabType：' + currentScannedTabType);
+    reportSections.push('过渡锁 tabTransitionLock：' + tabTransitionLock + (tabTransitionLock ? (' (目标: ' + tabTransitionTarget + ')') : ''));
+    reportSections.push('陈旧黑名单卡片数 tabTransitionStaleIds：' + tabTransitionStaleIds.size);
+    reportSections.push('getPageActualTabType() 结果：' + (actualTab || '(空/未识别)'));
+    reportSections.push('getTabFromUrl() 结果：' + (urlTab || '(空/无参数)'));
+    reportSections.push('activeTabEl() 高亮项：' + (curActive ? ('"' + (curActive.textContent || '').trim().replace(/\s+/g, ' ') + '" (' + curActive.className + ')') : '(null)'));
+
+    reportSections.push('mainTabs() 识别出的候选主标签：');
+    if (!tabs.length) {
+      reportSections.push('  (未找到任何主标签！可能小红书页面未渲染或选择器失配)');
+    } else {
+      tabs.forEach(function (t, i) {
+        const txt = (t.textContent || '').trim().replace(/\s+/g, ' ');
+        const cls = t.className || '';
+        const aria = t.getAttribute('aria-selected');
+        const act = isTabItemActive(t);
+        let fw = '';
+        try { fw = window.getComputedStyle(t).fontWeight; } catch (e) {}
+        reportSections.push(`  #${i + 1}: 文本="${txt}" | 类名="${cls}" | aria-selected=${aria} | isTabItemActive=${act} | font-weight=${fw}`);
+      });
+    }
+
+    const rawTabs = $$('#userPageTabs .reds-tab-item, .user-tabs .reds-tab-item, .reds-tabs-list .reds-tab-item, .reds-tab-item, [role="tab"]');
+    if (rawTabs.length && rawTabs.length !== tabs.length) {
+      reportSections.push('页面原生 Tab 元素快照 (前 6 个)：');
+      rawTabs.slice(0, 6).forEach(function (rt, i) {
+        const txt = (rt.textContent || '').trim().replace(/\s+/g, ' ');
+        reportSections.push(`    - [raw #${i + 1}] tag=${rt.tagName} | text="${txt}" | class="${rt.className}" | active=${ACTIVE_RE.test(rt.className)}`);
+      });
+    }
+
+    // 3. 笔记卡片节点与候选池
+    const cNodes = cardNodes();
+    const parsedCards = scanCards();
+    const scrollContainer = findScrollContainer();
+    lines.push('卡片节点：section.note-item=' + $$('section.note-item').length + '，.note-item=' + $$('.note-item').length);
+    lines.push('能解析出的笔记：' + parsedCards.length + ' 篇');
+    lines.push('滚动方式：' + (scrollContainer ? '内部容器' : 'window'));
+
+    reportSections.push('\n--- 【3. 笔记卡片与候选池】 ---');
+    reportSections.push('滚动容器：' + (scrollContainer ? (scrollContainer.tagName + '.' + scrollContainer.className) : 'window'));
+    reportSections.push('页面可见卡片 DOM 节点数：' + cNodes.length);
+    reportSections.push('scanCards() 解析出有效卡片数：' + parsedCards.length);
+    reportSections.push('当前工作区候选数 candidates：' + state.candidates.length);
+    reportSections.push('当前勾选数 selected：' + state.selected.size);
+    if (parsedCards.length) {
+      reportSections.push('页面 DOM 卡片快照 (前 3 篇)：');
+      parsedCards.slice(0, 3).forEach(function (c, i) {
+        reportSections.push(`  - [DOM #${i + 1}] id=${c.id} | title="${titleOf(c)}" | author=${c.author || '(空)'}`);
+      });
+    }
+    if (state.candidates.length) {
+      reportSections.push('工作区内存候选快照 (前 3 篇)：');
+      state.candidates.slice(0, 3).forEach(function (c, i) {
+        reportSections.push(`  - [Candidate #${i + 1}] id=${c.id} | title="${titleOf(c)}" | author=${c.author || '(空)'}`);
+      });
+    }
 
     const uncollectCount = (state.modeCache && state.modeCache.uncollect) ? state.modeCache.uncollect.length : 0;
     const unlikeCount = (state.modeCache && state.modeCache.unlike) ? state.modeCache.unlike.length : 0;
     lines.push('独立缓存：收藏 ' + uncollectCount + ' 篇，点赞 ' + unlikeCount + ' 篇');
     lines.push('本地记录：已取消收藏 ' + state.processed.uncollect.length + ' 条，已取消点赞 ' + state.processed.unlike.length + ' 条');
     lines.push('累计历史：' + state.history.length + ' 条');
+
+    // 4. 运行时事件轨迹
+    reportSections.push('\n--- 【4. 运行时事件追踪轨迹 (Trail, 最近 20 条)】 ---');
+    if (!diagnosticTrail.length) {
+      reportSections.push('  (暂无运行轨迹。切 Tab 或滑动后点击诊断可查看详细事件)');
+    } else {
+      diagnosticTrail.slice(-20).forEach(function (tr) {
+        reportSections.push(`  [${tr.t}] ${tr.name} => ${JSON.stringify(tr.detail)}`);
+      });
+    }
+
+    reportSections.push('========================================================');
+
+    const fullReportText = reportSections.join('\n');
     lines.forEach(function (l) { log('· ' + l); });
-    console.info('[RedNote Manager] 诊断\n' + lines.join('\n'));
+    console.info('[RedNote Manager] 诊断\n' + fullReportText);
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(fullReportText);
+        log('【诊断】完整全景报告已复制到剪贴板，可直接粘贴发给开发者排查', 'ok');
+      }
+    } catch (e) {}
+
     if (!p || !p.signer) log('提示：签名函数缺失通常刷新页面即可恢复', 'warn');
+    return fullReportText;
   }
 
   async function clearRecords() {
@@ -3427,7 +3559,12 @@
       else if (action === 'stop') requestStop();
       else if (action === 'scan') scanOnly();
       else if (action === 'undo') undoRun(msg);
-      else if (action === 'diagnose') diagnose();
+      else if (action === 'diagnose') {
+        diagnose().then(function (report) {
+          sendResponse({ ok: true, state: fullPublicState(), report: report });
+        });
+        return true;
+      }
       sendResponse({ ok: true, state: fullPublicState() });
       return;
     }

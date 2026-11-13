@@ -771,10 +771,62 @@ function bindEvents() {
     });
   }
 
-  $('rn-diag').addEventListener('click', async function () {
-    await sendToTab('RN_ACTION', { action: 'diagnose' });
-    requestState();
+  let toastTimer = null;
+  function showToast(msg, duration) {
+    let toastEl = $('rn-toast');
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.id = 'rn-toast';
+      toastEl.className = 'rn-toast';
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add('rn-show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toastEl.classList.remove('rn-show');
+    }, duration || 3200);
+  }
+
+  async function runDiagnosisWithFeedback(btn) {
+    const originalText = btn ? btn.textContent : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '正在诊断…';
+    }
+    try {
+      const res = await sendToTab('RN_ACTION', { action: 'diagnose' });
+      if (res && res.report) {
+        try {
+          await navigator.clipboard.writeText(res.report);
+          showToast('✅ 全景诊断报告已复制到剪贴板！可直接粘贴发给开发者');
+        } catch (e) {
+          showToast('✅ 诊断完成，已写入操作记录');
+        }
+      } else {
+        showToast('✅ 诊断完成，已写入操作记录');
+      }
+    } catch (err) {
+      showToast('❌ 诊断失败：' + ((err && err.message) || err));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+      requestState();
+    }
+  }
+
+  $('rn-diag').addEventListener('click', function () {
+    runDiagnosisWithFeedback($('rn-diag'));
   });
+
+  const logDiagBtn = $('rn-log-diag');
+  if (logDiagBtn) {
+    logDiagBtn.addEventListener('click', function () {
+      runDiagnosisWithFeedback(logDiagBtn);
+    });
+  }
 
   const refreshBtn = $('rn-refresh');
   if (refreshBtn) {

@@ -756,6 +756,24 @@ body {
   gap: 6px;
 }
 
+.rn-log-diag-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rn-log-diag-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.25);
+  border-color: #94a3b8;
+  color: #fff;
+}
+
 .rn-log-undo-btn {
   font-size: 11px;
   padding: 2px 8px;
@@ -1351,4 +1369,32 @@ body {
   from { transform: scale(0.93); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* Toast 提示条 */
+.rn-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 46, 77, 0.5);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 9999;
+  max-width: 90%;
+  text-align: center;
+}
+
+.rn-toast.rn-show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
 
