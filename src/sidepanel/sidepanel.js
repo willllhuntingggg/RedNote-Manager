@@ -658,14 +658,14 @@ function renderList(candidates, visible, st, query) {
   if (remaining > 0) {
     const isFiltered = !!((query && query.trim()) || (activeTagFilter && activeTagFilter !== 'all'));
     if (isFiltered) {
-      footerHtml = '<div class="rn-list-more-bar" style="padding:10px 12px; text-align:center; font-size:12px; color:var(--rn-text-dim, #94a3b8); background:rgba(255,255,255,0.04); border-radius:6px; margin:8px 0;">' +
+      footerHtml = '<div class="rn-list-more-bar" style="padding:10px 12px; text-align:center; font-size:12px; color:var(--text-dim); background:var(--bg-card); border:1px solid var(--border); border-radius:6px; margin:8px 0;">' +
         '… 还有 ' + remaining + ' 篇匹配笔记未展示。可缩小搜索词，或：' +
         '<div style="margin-top:6px; display:flex; gap:8px; justify-content:center;">' +
         '<button class="rn-btn rn-mini" id="rn-btn-show-more" type="button">加载更多 (+100)</button>' +
         '<button class="rn-btn rn-mini" id="rn-btn-show-all" type="button">展示全部 (' + visList.length + ')</button>' +
         '</div></div>';
     } else {
-      footerHtml = '<div class="rn-list-more-bar" style="padding:10px 12px; text-align:center; font-size:12px; color:var(--rn-text-dim, #94a3b8); background:rgba(255,255,255,0.04); border-radius:6px; margin:8px 0;">' +
+      footerHtml = '<div class="rn-list-more-bar" style="padding:10px 12px; text-align:center; font-size:12px; color:var(--text-dim); background:var(--bg-card); border:1px solid var(--border); border-radius:6px; margin:8px 0;">' +
         '… 已展示前 ' + maxShow + ' 篇，还有 ' + remaining + ' 篇未展示：' +
         '<div style="margin-top:6px; display:flex; gap:8px; justify-content:center;">' +
         '<button class="rn-btn rn-mini" id="rn-btn-show-more" type="button">加载更多 (+100)</button>' +

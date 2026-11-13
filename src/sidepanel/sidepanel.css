@@ -8,6 +8,7 @@
   --bg-card-hover: #292934;
   --border: #2d2d38;
   --border-focus: #ff5c78;
+  --border-hover: #3e3e4d;
   --text-main: #f3f3f7;
   --text-muted: #9595a5;
   --text-dim: #6d6d7c;
@@ -23,6 +24,8 @@
   --search-clear-bg: rgba(255, 255, 255, 0.12);
   --item-border: #23232c;
   --item-hover: #252530;
+  --item-sel-bg: rgba(255, 46, 77, 0.12);
+  --item-sel-hover: rgba(255, 46, 77, 0.18);
   --box-border: #555566;
   --box-bg: #191922;
   --link-bg: rgba(255, 255, 255, 0.06);
@@ -48,6 +51,46 @@
   --toast-bg: rgba(15, 23, 42, 0.95);
   --toast-color: #ffffff;
   --scrollbar-thumb: #3b3b4a;
+
+  /* 模式指示条与状态徽章 */
+  --banner-bg: rgba(255, 46, 77, 0.08);
+  --banner-border: rgba(255, 46, 77, 0.25);
+  --banner-badge-bg: rgba(255, 46, 77, 0.22);
+  --banner-badge-color: #ff859b;
+  --banner-badge-border: rgba(255, 46, 77, 0.4);
+  --stat-acc: #ff8597;
+
+  /* 提示框 */
+  --alert-bg: rgba(255, 46, 77, 0.12);
+  --alert-border: rgba(255, 46, 77, 0.35);
+  --alert-color: #ffb3bf;
+
+  /* AI 触发按钮与高亮 */
+  --btn-ai-bg: linear-gradient(135deg, rgba(168, 85, 247, 0.22) 0%, rgba(236, 72, 153, 0.22) 100%);
+  --btn-ai-border: rgba(168, 85, 247, 0.45);
+  --btn-ai-text: #e9d5ff;
+  --btn-ai-hover-bg: linear-gradient(135deg, rgba(168, 85, 247, 0.38) 0%, rgba(236, 72, 153, 0.38) 100%);
+  --btn-ai-hover-border: #c084fc;
+  --btn-ai-hover-text: #ffffff;
+
+  /* 撤销与操作按钮 */
+  --undo-btn-bg: rgba(255, 46, 77, 0.12);
+  --undo-btn-border: rgba(255, 46, 77, 0.35);
+  --undo-btn-text: #ff8597;
+  --undo-btn-hover-bg: rgba(255, 46, 77, 0.28);
+  --undo-btn-hover-border: #ff2e4d;
+  --undo-btn-hover-text: #ffffff;
+  --btn-danger-color: #ff758c;
+  --btn-danger-border: rgba(255, 46, 77, 0.3);
+  --btn-danger-bg: transparent;
+  --btn-danger-hover-color: #ffffff;
+  --btn-danger-hover-border: #ff2e4d;
+  --btn-danger-hover-bg: rgba(255, 46, 77, 0.18);
+  --icobtn-active-bg: rgba(255, 46, 77, 0.15);
+  --icobtn-active-color: #ff5c78;
+  --icobtn-active-border: rgba(255, 46, 77, 0.5);
+  --icobtn-active-shadow: 0 0 8px rgba(255, 46, 77, 0.25);
+
   color-scheme: dark;
 }
 
@@ -58,6 +101,7 @@ html[data-theme="light"] {
   --bg-card-hover: #f1f3f8;
   --border: #e3e6ef;
   --border-focus: #ff2e4d;
+  --border-hover: #cbd5e1;
   --text-main: #191924;
   --text-muted: #64667a;
   --text-dim: #9295a6;
@@ -68,11 +112,13 @@ html[data-theme="light"] {
   --danger: #e11d48;
   --warn: #d97706;
 
-  --tabs-bg: #e8ebf2;
+  --tabs-bg: #eceef5;
   --progress-bg: #e2e8f0;
   --search-clear-bg: rgba(0, 0, 0, 0.08);
   --item-border: #edf0f6;
   --item-hover: #f4f6fa;
+  --item-sel-bg: #fff5f6;
+  --item-sel-hover: #ffebee;
   --box-border: #cbd5e1;
   --box-bg: #ffffff;
   --link-bg: rgba(0, 0, 0, 0.04);
@@ -98,6 +144,46 @@ html[data-theme="light"] {
   --toast-bg: rgba(30, 41, 59, 0.95);
   --toast-color: #ffffff;
   --scrollbar-thumb: #cbd5e1;
+
+  /* 模式指示条与状态徽章：浅色下采用纯白精致卡片与微弱浅灰/玫瑰调，绝不红得晃眼 */
+  --banner-bg: #ffffff;
+  --banner-border: #e2e8f0;
+  --banner-badge-bg: #fff1f2;
+  --banner-badge-color: #e11d48;
+  --banner-badge-border: #fecdd3;
+  --stat-acc: #e11d48;
+
+  /* 提示框 */
+  --alert-bg: #fff1f2;
+  --alert-border: #fecdd3;
+  --alert-color: #9f1239;
+
+  /* AI 触发按钮：浅色下使用饱满清爽的高对比度深紫文字与浅紫渐变底色，字迹清晰锐利 */
+  --btn-ai-bg: linear-gradient(135deg, #f5f3ff 0%, #fdf2f8 100%);
+  --btn-ai-border: #d8b4fe;
+  --btn-ai-text: #6b21a8;
+  --btn-ai-hover-bg: linear-gradient(135deg, #ede9fe 0%, #fce7f3 100%);
+  --btn-ai-hover-border: #a855f7;
+  --btn-ai-hover-text: #581c87;
+
+  /* 撤销与操作按钮：浅色下默认使用沉稳中性色，悬浮时适度反馈，拒绝大红大紫 */
+  --undo-btn-bg: #f1f5f9;
+  --undo-btn-border: #cbd5e1;
+  --undo-btn-text: #334155;
+  --undo-btn-hover-bg: #e2e8f0;
+  --undo-btn-hover-border: #94a3b8;
+  --undo-btn-hover-text: #0f172a;
+  --btn-danger-color: #dc2626;
+  --btn-danger-border: #fca5a5;
+  --btn-danger-bg: #fef2f2;
+  --btn-danger-hover-color: #b91c1c;
+  --btn-danger-hover-border: #f87171;
+  --btn-danger-hover-bg: #fee2e2;
+  --icobtn-active-bg: #f1f5f9;
+  --icobtn-active-color: #1e293b;
+  --icobtn-active-border: #cbd5e1;
+  --icobtn-active-shadow: none;
+
   color-scheme: light;
 }
 
@@ -207,14 +293,14 @@ body {
 .rn-icobtn:hover {
   background: var(--bg-card-hover);
   color: var(--text-main);
-  border-color: var(--border-focus);
+  border-color: var(--border-hover);
 }
 
 .rn-icobtn.rn-active {
-  background: rgba(255, 46, 77, 0.15);
-  color: #ff5c78;
-  border-color: rgba(255, 46, 77, 0.5);
-  box-shadow: 0 0 8px rgba(255, 46, 77, 0.25);
+  background: var(--icobtn-active-bg);
+  color: var(--icobtn-active-color);
+  border-color: var(--icobtn-active-border);
+  box-shadow: var(--icobtn-active-shadow);
 }
 
 /* 内容主体 */
@@ -235,8 +321,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: rgba(255, 46, 77, 0.08);
-  border: 1px solid rgba(255, 46, 77, 0.25);
+  background: var(--banner-bg);
+  border: 1px solid var(--banner-border);
   border-radius: 9px;
   padding: 8px 12px;
   transition: all 0.2s ease;
@@ -278,9 +364,9 @@ body {
 .rn-mode-badge {
   font-size: 11px;
   font-weight: 700;
-  background: rgba(255, 46, 77, 0.22);
-  color: #ff859b;
-  border: 1px solid rgba(255, 46, 77, 0.4);
+  background: var(--banner-badge-bg);
+  color: var(--banner-badge-color);
+  border: 1px solid var(--banner-badge-border);
   padding: 2px 7px;
   border-radius: 99px;
   font-variant-numeric: tabular-nums;
@@ -352,9 +438,9 @@ body {
   padding: 8px 10px;
   font-size: 11.5px;
   line-height: 1.5;
-  background: rgba(255, 46, 77, 0.12);
-  border: 1px solid rgba(255, 46, 77, 0.35);
-  color: #ffb3bf;
+  background: var(--alert-bg);
+  border: 1px solid var(--alert-border);
+  color: var(--alert-color);
 }
 .rn-alert[hidden] {
   display: none;
@@ -385,7 +471,7 @@ body {
 
 .rn-stat b.rn-ok { color: var(--success); }
 .rn-stat b.rn-bad { color: var(--danger); }
-.rn-stat b.rn-acc { color: #ff8597; }
+.rn-stat b.rn-acc { color: var(--stat-acc); }
 .rn-stat span {
   font-size: 10px;
   color: var(--text-muted);
@@ -430,7 +516,7 @@ body {
 
 .rn-btn:hover {
   background: var(--bg-card-hover);
-  border-color: var(--border-focus);
+  border-color: var(--border-hover);
 }
 
 .rn-btn:disabled, .rn-btn[disabled] {
@@ -623,11 +709,11 @@ body {
 }
 
 .rn-item.rn-sel {
-  background: rgba(255, 46, 77, 0.12);
+  background: var(--item-sel-bg);
 }
 
 .rn-item.rn-sel:hover {
-  background: rgba(255, 46, 77, 0.18);
+  background: var(--item-sel-hover);
 }
 
 .rn-item .rn-box {
@@ -762,14 +848,15 @@ body {
 }
 
 .rn-btn-danger {
-  color: #ff758c !important;
-  border-color: rgba(255, 46, 77, 0.3) !important;
+  color: var(--btn-danger-color) !important;
+  border-color: var(--btn-danger-border) !important;
+  background: var(--btn-danger-bg) !important;
 }
 
 .rn-btn-danger:hover {
-  background: rgba(255, 46, 77, 0.18) !important;
-  color: #fff !important;
-  border-color: #ff2e4d !important;
+  background: var(--btn-danger-hover-bg) !important;
+  color: var(--btn-danger-hover-color) !important;
+  border-color: var(--btn-danger-hover-border) !important;
 }
 
 .rn-field {
@@ -860,19 +947,18 @@ body {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 6px;
-  background: rgba(255, 46, 77, 0.12);
-  border: 1px solid rgba(255, 46, 77, 0.35);
-  color: #ff8597;
+  background: var(--undo-btn-bg);
+  border: 1px solid var(--undo-btn-border);
+  color: var(--undo-btn-text);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .rn-log-undo-btn:hover:not(:disabled) {
-  background: rgba(255, 46, 77, 0.28);
-  border-color: #ff2e4d;
-  color: #fff;
-  box-shadow: 0 0 8px rgba(255, 46, 77, 0.35);
+  background: var(--undo-btn-hover-bg);
+  border-color: var(--undo-btn-hover-border);
+  color: var(--undo-btn-hover-text);
 }
 
 .rn-log-undo-btn:disabled {
@@ -924,9 +1010,9 @@ body {
   font-size: 10px;
   line-height: 16px;
   border-radius: 4px;
-  background: rgba(255, 46, 77, 0.15);
-  border: 1px solid rgba(255, 46, 77, 0.35);
-  color: #ff8597;
+  background: var(--undo-btn-bg);
+  border: 1px solid var(--undo-btn-border);
+  color: var(--undo-btn-text);
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -935,9 +1021,9 @@ body {
 }
 
 .rn-line-undo-btn:hover {
-  background: #ff2e4d;
-  border-color: #ff2e4d;
-  color: #fff;
+  background: var(--undo-btn-hover-bg);
+  border-color: var(--undo-btn-hover-border);
+  color: var(--undo-btn-hover-text);
 }
 
 .rn-line-undo-btn.rn-undone {
@@ -952,17 +1038,17 @@ body {
 
 /* AI 触发按钮 */
 .rn-btn.rn-btn-ai {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.22) 0%, rgba(236, 72, 153, 0.22) 100%);
-  border-color: rgba(168, 85, 247, 0.45);
-  color: #e9d5ff;
-  font-weight: 600;
+  background: var(--btn-ai-bg);
+  border: 1px solid var(--btn-ai-border);
+  color: var(--btn-ai-text);
+  font-weight: 650;
 }
 
 .rn-btn.rn-btn-ai:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.38) 0%, rgba(236, 72, 153, 0.38) 100%);
-  border-color: #c084fc;
-  color: #fff;
-  box-shadow: 0 0 10px rgba(192, 132, 252, 0.35);
+  background: var(--btn-ai-hover-bg);
+  border-color: var(--btn-ai-hover-border);
+  color: var(--btn-ai-hover-text);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
 }
 
 .rn-btn.rn-btn-ai.rn-loading {
@@ -1029,7 +1115,7 @@ body {
 .rn-chip:hover {
   background: var(--chip-hover);
   color: var(--text-main);
-  border-color: var(--border-focus);
+  border-color: var(--border-hover);
 }
 
 .rn-chip.rn-chip-active {
@@ -1186,6 +1272,73 @@ body {
   color: #717182;
   font-size: 9.5px;
   margin-left: 2px;
+}
+
+/* 浅色模式下的决策胶囊与卡片标签适配（拒绝泛白与刺眼红色） */
+html[data-theme="light"] .rn-chip-warn {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+html[data-theme="light"] .rn-chip-warn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+html[data-theme="light"] .rn-chip-danger {
+  color: #c2410c;
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+html[data-theme="light"] .rn-chip-danger:hover {
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+html[data-theme="light"] .rn-chip-safe {
+  color: #15803d;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+html[data-theme="light"] .rn-chip-safe:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+html[data-theme="light"] .rn-chip-cat {
+  color: #7e22ce;
+  border-color: #e9d5ff;
+  background: #faf5ff;
+}
+html[data-theme="light"] .rn-chip-cat:hover {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+}
+
+html[data-theme="light"] .rn-badge-warn {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+html[data-theme="light"] .rn-badge-danger {
+  color: #c2410c;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+html[data-theme="light"] .rn-badge-safe {
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+html[data-theme="light"] .rn-badge-cat {
+  color: #7e22ce;
+  background: #faf5ff;
+  border-color: #e9d5ff;
+}
+html[data-theme="light"] .rn-badge-normal {
+  color: #475569;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+html[data-theme="light"] .rn-badge-reason {
+  color: #64748b;
 }
 
 /* 设置项扩展控件 */

@@ -2798,6 +2798,12 @@ test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支
   assert.strictEqual(cssContent.includes('color-scheme: dark'), true, '深色主题声明了 color-scheme: dark');
   assert.strictEqual(cssContent.includes('--bg-primary: #f6f7fa'), true, '浅色模式包含浅色背景定义');
 
+  // 浅色模式视觉抑制与字迹清晰度校验（杜绝红色滥用与AI文字看不清）
+  assert.strictEqual(cssContent.includes('--border-hover: #cbd5e1'), true, '浅色模式悬浮边框使用柔和中性色，避免红色滥用');
+  assert.strictEqual(cssContent.includes('--btn-ai-text: #6b21a8'), true, '浅色模式 AI 按钮文字使用高对比度深紫，确保清晰可见');
+  assert.strictEqual(cssContent.includes('--banner-bg: #ffffff'), true, '浅色模式模式横幅采用纯净白卡，消除大块刺眼粉红');
+  assert.strictEqual(cssContent.includes('html[data-theme="light"] .rn-chip-warn'), true, '浅色模式包含高对比度标签胶囊样式');
+
   // 3. 验证 JS 中存在外观应用逻辑与事件处理
   const jsPath = path.join(__dirname, '../src/sidepanel/sidepanel.js');
   const jsContent = fs.readFileSync(jsPath, 'utf8');
