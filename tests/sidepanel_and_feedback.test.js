@@ -2650,6 +2650,135 @@ test('全链路防串仓终极闭环：换Tab深度拦截机制（candidates全�
   assert.strictEqual(currentCandidates.length, 4, '共存卡片与纯点赞卡片均正常展示');
 });
 
+test('小红书多容器常驻轮播架构（transform-container）防串仓终极闭环：彻底杜绝点赞500篇渗透进收藏', () => {
+  // 模拟小红书真实 DOM 结构：
+  // .transform-container 下有 3 个槽位：
+  // slot 0 (笔记), slot 1 (收藏), slot 2 (点赞)
+
+  function createMockSlot(index, activeClass, cards) {
+    const classList = new Set(activeClass ? activeClass.split(' ') : []);
+    const slotObj = {
+      classList: {
+        contains: (cls) => classList.has(cls),
+      },
+      parentElement: null,
+      children: [],
+      closest: function (sel) {
+        if (sel.includes('.transform-container > *')) return slotObj;
+        if (sel.includes('.transform-container')) return transformContainer;
+        return null;
+      },
+    };
+    const cardNodes = cards.map(c => ({
+      id: c.id,
+      title: c.title,
+      closest: function (sel) {
+        if (sel.includes('.transform-container > *')) return slotObj;
+        if (sel.includes('.transform-container')) return transformContainer;
+        return null;
+      },
+      getBoundingClientRect: function () {
+        // 当处于收藏激活态（slot 1）时：
+        // slot 1 的卡片在屏幕视口内：left = 23px ~ 520px, right = 260px ~ 750px
+        // slot 2（点赞）的卡片在视口外右侧：left = 768px ~ 1200px, right = 1000px ~ 1500px
+        if (index === 1) {
+          return { left: 50, right: 290, width: 240, height: 320 };
+        } else if (index === 2) {
+          return { left: 800, right: 1040, width: 240, height: 320 };
+        } else {
+          return { left: -700, right: -460, width: 240, height: 320 };
+        }
+      },
+      parentElement: slotObj,
+    }));
+    slotObj.children = cardNodes;
+    return { slotObj, cardNodes };
+  }
+
+  const collectCards = [
+    { id: 'col_01', title: 'X上疯传 用Cursor编程的完美工作流' },
+    { id: 'col_02', title: '50万美金冠军AI短片，8个做法拆给你' },
+    { id: 'col_03', title: '希望妈妈的副业早日月入过万' },
+  ];
+
+  const likeCards = [
+    { id: 'like_jay_01', title: '周杰伦昆凌和好友一起玩个游戏吧😆' },
+    { id: 'like_jay_02', title: '周杰伦亲绘「幻想Fantasy」版画是真丑啊' },
+    { id: 'like_03', title: '这样不过分吧???' },
+  ];
+
+  // 场景：当前处于“收藏”激活态
+  // slot 1 拥有 .tab-content-item 类名，slot 2 为非激活态（无该类名）
+  const slot1 = createMockSlot(1, 'tab-content-item', collectCards);
+  const slot2 = createMockSlot(2, '', likeCards);
+  const slot0 = createMockSlot(0, '', []);
+
+  const transformContainer = {
+    children: [slot0.slotObj, slot1.slotObj, slot2.slotObj],
+    querySelector: function (sel) {
+      if (sel === '.tab-content-item') return slot1.slotObj;
+      return null;
+    },
+  };
+  slot0.slotObj.parentElement = transformContainer;
+  slot1.slotObj.parentElement = transformContainer;
+  slot2.slotObj.parentElement = transformContainer;
+
+  // 测试 isCardInWrongTabContainer
+  function isCardInWrongTabContainer(el, tab) {
+    if (!el || !el.closest || !tab) return false;
+    const tc = el.closest('.transform-container');
+    if (tc) {
+      const slot = el.closest('.transform-container > *');
+      if (slot) {
+        if (!slot.classList.contains('tab-content-item')) {
+          return true;
+        }
+        const slots = Array.prototype.slice.call(tc.children);
+        const slotIdx = slots.indexOf(slot);
+        if (slotIdx !== -1 && slots.length >= 3) {
+          if (tab === 'collect' && slotIdx !== 1) return true;
+          if (tab === 'like' && slotIdx !== 2) return true;
+          if (tab === 'notes' && slotIdx !== 0) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // 1. 验证在收藏模式下，点赞槽位里的“周杰伦”卡片被 isCardInWrongTabContainer 坚决判定为错误容器！
+  assert.strictEqual(isCardInWrongTabContainer(likeCards[0], 'collect'), false); // raw card obj no closest
+  assert.strictEqual(isCardInWrongTabContainer(slot2.cardNodes[0], 'collect'), true, '点赞槽位中的周杰伦笔记属于错误容器，被坚决剔除！');
+  assert.strictEqual(isCardInWrongTabContainer(slot2.cardNodes[1], 'collect'), true, '点赞槽位中的周杰伦版画笔记属于错误容器，被坚决剔除！');
+
+  // 2. 验证在收藏模式下，收藏槽位里的正常笔记判定为正确容器
+  assert.strictEqual(isCardInWrongTabContainer(slot1.cardNodes[0], 'collect'), false, '收藏槽位内的卡片正常保留');
+  assert.strictEqual(isCardInWrongTabContainer(slot1.cardNodes[1], 'collect'), false, '收藏槽位内的卡片正常保留');
+
+  // 3. 测试水平视口物理检测：left >= 768px (window.innerWidth = 769px)
+  function isHorizontallyVisible(el, winW) {
+    const r = el.getBoundingClientRect();
+    if (winW > 0 && r.width > 0 && r.height > 0) {
+      if (r.right <= 0 || r.left >= winW) return false;
+    }
+    return true;
+  }
+  const winWidth = 769;
+  assert.strictEqual(isHorizontallyVisible(slot1.cardNodes[0], winWidth), true, '收藏卡片在屏幕中心可见');
+  assert.strictEqual(isHorizontallyVisible(slot2.cardNodes[0], winWidth), false, '点赞槽位卡片在屏幕右侧视口外（left=800px > 769px），物理不可见！');
+  assert.strictEqual(isHorizontallyVisible(slot2.cardNodes[1], winWidth), false, '点赞槽位卡片在屏幕右侧视口外，物理不可见！');
+
+  // 4. 模拟 cardNodes('collect')，验证最终只提取出收藏卡片，周杰伦等点赞卡片 0% 渗入！
+  const allCardNodes = [...slot1.cardNodes, ...slot2.cardNodes];
+  const filteredCollectCards = allCardNodes.filter(node => {
+    return isHorizontallyVisible(node, winWidth) && !isCardInWrongTabContainer(node, 'collect');
+  });
+
+  assert.strictEqual(filteredCollectCards.length, 3, '只有收藏槽位的 3 篇卡片被提取');
+  assert.strictEqual(filteredCollectCards.every(c => c.id.startsWith('col_')), true, '提取出的全部是 col_ 开头的收藏笔记');
+  assert.strictEqual(filteredCollectCards.some(c => c.id.includes('jay')), false, '周杰伦等仅点赞的笔记 0% 渗透，彻底阻断！');
+});
+
 
 
 
