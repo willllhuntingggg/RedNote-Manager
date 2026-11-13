@@ -712,18 +712,20 @@
         return false; // DOM 处于清空/加载中状态，暂不入库
       }
 
-      // 只要 DOM 中仍有陈旧卡片残留（无论是全旧还是部分混杂），说明小红书新卡片尚未完全换批渲染就绪，坚决拒绝一切入库！
-      const anyStale = allCards.some(function (c) {
-        return tabTransitionStaleIds && tabTransitionStaleIds.has(c.id);
+      // 统计 DOM 中不属于旧黑名单的全新卡片
+      const newCards = allCards.filter(function (c) {
+        return !tabTransitionStaleIds || !tabTransitionStaleIds.has(c.id);
       });
-      if (anyStale) {
+
+      // 若全新卡片为 0（即 DOM 中的卡片 100% 全部来自前一模式的旧卡片），说明小红书新数据尚未到达，坚决拒绝一切入库！
+      if (!newCards.length) {
         return false;
       }
 
-      // 只有当 DOM 中的旧卡片全部彻底卸载且新批次卡片就绪后，才安全解除过渡锁与清空黑名单
+      // 新批次卡片已真实到达（绝大部分为全新卡片），安全解除过渡锁与清空黑名单
       tabTransitionLock = false;
       tabTransitionStaleIds.clear();
-      recordDiagEvent('UNLOCK_TRANSITION', { targetTab: actualTab, validCount: allCards.length });
+      recordDiagEvent('UNLOCK_TRANSITION', { targetTab: actualTab, validCount: allCards.length, newCount: newCards.length });
     }
 
     const targetMode = actualTab === 'like' ? 'unlike' : 'uncollect';
@@ -1026,31 +1028,31 @@
 
       const cards = scanCards(curTab);
       if (cards.length > 0) {
-        const anyStale = cards.some(function (c) {
-          return tabTransitionStaleIds && tabTransitionStaleIds.has(c.id);
+        const newCards = cards.filter(function (c) {
+          return !tabTransitionStaleIds || !tabTransitionStaleIds.has(c.id);
         });
-        // 只有当 DOM 中的旧卡片全部彻底卸载且渲染出全新批次卡片后，才安全解除过渡锁
-        if (!anyStale && tabSwitchGeneration === gen) {
+        // 只要 DOM 中渲染出了全新批次的卡片（不再是 100% 旧卡片挂载），证明小红书新数据已就绪，安全解除过渡锁！
+        if (newCards.length > 0 && tabSwitchGeneration === gen) {
           tabTransitionLock = false;
           tabTransitionStaleIds.clear();
-          recordDiagEvent('UNLOCK_TRANSITION', { targetTab: expectedTab, validCount: cards.length });
+          recordDiagEvent('UNLOCK_TRANSITION', { targetTab: expectedTab, validCount: cards.length, newCount: newCards.length });
           return true;
         }
       }
       await sleep(150);
     }
 
-    // 超时兜底：若超时后页面确实没有旧卡片（例如空收藏/空点赞列表），安全解锁
+    // 超时兜底：若超时后页面确实为纯净状态（空列表或已包含新卡片），安全解锁
     if (tabSwitchGeneration === gen) {
       const curTab = getPageActualTabType();
       const finalCards = scanCards(curTab);
-      const anyStale = finalCards.some(function (c) {
-        return tabTransitionStaleIds && tabTransitionStaleIds.has(c.id);
+      const newCards = finalCards.filter(function (c) {
+        return !tabTransitionStaleIds || !tabTransitionStaleIds.has(c.id);
       });
-      if (!anyStale) {
+      if (!finalCards.length || newCards.length > 0) {
         tabTransitionLock = false;
         tabTransitionStaleIds.clear();
-        recordDiagEvent('UNLOCK_TIMEOUT_CLEAN', { targetTab: expectedTab, count: finalCards.length });
+        recordDiagEvent('UNLOCK_TIMEOUT_CLEAN', { targetTab: expectedTab, count: finalCards.length, newCount: newCards.length });
         return true;
       }
       recordDiagEvent('TIMEOUT_STILL_STALE', { targetTab: expectedTab, count: finalCards.length });
@@ -3087,16 +3089,19 @@
     reportSections.push('当前工作区候选数 candidates：' + state.candidates.length);
     reportSections.push('当前勾选数 selected：' + state.selected.size);
     if (parsedCards.length) {
-      reportSections.push('页面 DOM 卡片快照 (前 3 篇)：');
+      reportSections.push('页面 DOM 卡片快照 (当前屏幕视口内前 3 篇，DOM共 ' + parsedCards.length + ' 篇)：');
       parsedCards.slice(0, 3).forEach(function (c, i) {
         reportSections.push(`  - [DOM #${i + 1}] id=${c.id} | title="${titleOf(c)}" | author=${c.author || '(空)'}`);
       });
     }
     if (state.candidates.length) {
-      reportSections.push('工作区内存候选快照 (前 3 篇)：');
+      reportSections.push('工作区内存候选快照 (全量列表顶部前 3 篇，工作区共 ' + state.candidates.length + ' 篇)：');
       state.candidates.slice(0, 3).forEach(function (c, i) {
         reportSections.push(`  - [Candidate #${i + 1}] id=${c.id} | title="${titleOf(c)}" | author=${c.author || '(空)'}`);
       });
+      if (state.candidates.length > parsedCards.length) {
+        reportSections.push('  💡 提示：当前页面已向下滚动多屏（累积加载至第 ' + state.candidates.length + ' 篇），小红书虚拟滚动机制自动卸载了顶部 DOM 卡片。DOM 快照展示的是当前视口可见卡片，内存候选展示的是全量列表顶部卡片。若滚回页面顶部两者即完全对齐。');
+      }
     }
 
     const uncollectCount = (state.modeCache && state.modeCache.uncollect) ? state.modeCache.uncollect.length : 0;

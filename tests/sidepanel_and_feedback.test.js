@@ -2566,9 +2566,9 @@ test('全链路防串仓终极闭环：换Tab深度拦截机制（candidates全�
   function syncCards(actualTab, domCards) {
     if (tabTransitionLock) {
       if (actualTab !== tabTransitionTarget) return false;
-      const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
-      if (anyStale) {
-        return false; // 只要有旧卡片在，坚决拒绝入库！
+      const newCards = domCards.filter(c => !tabTransitionStaleIds || !tabTransitionStaleIds.has(c.id));
+      if (!newCards.length) {
+        return false; // 100% 全部为旧卡片，坚决拒绝入库！
       }
       tabTransitionLock = false;
       tabTransitionStaleIds.clear();
@@ -2584,8 +2584,8 @@ test('全链路防串仓终极闭环：换Tab深度拦截机制（candidates全�
   // 模拟 waitForCards
   function canUnlock(curTab, domCards, elapsedMs) {
     if (elapsedMs < 250) return false; // 250ms 门禁
-    const anyStale = domCards.some(c => tabTransitionStaleIds.has(c.id));
-    if (anyStale) return false;
+    const newCards = domCards.filter(c => !tabTransitionStaleIds || !tabTransitionStaleIds.has(c.id));
+    if (!newCards.length) return false;
     tabTransitionLock = false;
     tabTransitionStaleIds.clear();
     return true;
@@ -2607,16 +2607,16 @@ test('全链路防串仓终极闭环：换Tab深度拦截机制（candidates全�
 
   // 此时 syncCards 尝试入库
   const syncAt0ms = syncCards('collect', topLikedCards6);
-  assert.strictEqual(syncAt0ms, false, '过渡锁期间只要有旧卡片坚决拒绝入库');
+  assert.strictEqual(syncAt0ms, false, '过渡锁期间只要全为旧卡片坚决拒绝入库');
   assert.strictEqual(currentCandidates.length, 0, '候选池依然保持纯净的 0 篇，绝对不被 6 篇点赞卡片污染！');
 
   // 步骤 3：在 1500ms，小红书接口依然在加载中，旧 DOM 卡片依然在
   const unlockAt1500ms = canUnlock('collect', topLikedCards6, 1500);
-  assert.strictEqual(unlockAt1500ms, false, 'DOM 中有旧卡片时坚决不解锁');
+  assert.strictEqual(unlockAt1500ms, false, 'DOM 中全为旧卡片时坚决不解锁');
   const syncAt1500ms = syncCards('collect', topLikedCards6);
   assert.strictEqual(syncAt1500ms, false, '依然坚决阻断入库');
 
-  // 步骤 4：在 3000ms（即用户报告中的 08:55:20），小红书终于返回真实收藏数据，渲染 25 篇真实收藏卡片
+  // 步骤 4：在 3000ms（即真实换批完成），小红书渲染 25 篇真实收藏卡片
   const realCollectCards25 = Array.from({ length: 25 }, (_, i) => ({
     id: 'col_' + String(i).padStart(19, '0'),
     title: '收藏笔记 ' + i,
@@ -2629,6 +2629,25 @@ test('全链路防串仓终极闭环：换Tab深度拦截机制（candidates全�
   assert.strictEqual(syncAt3000ms, true, '真实收藏卡片安全入库');
   assert.strictEqual(currentCandidates.length, 25, '候选池纯净且仅包含 25 篇收藏卡片');
   assert.strictEqual(currentCandidates.every(c => c.id.startsWith('col_')), true, '彻底消灭任何点赞卡片的串仓渗透！');
+
+  // 步骤 5：切回点赞，测试“既点赞又收藏”的共存卡片绝不误发 TIMEOUT_STILL_STALE
+  beginTransition('like', realCollectCards25);
+  assert.strictEqual(tabTransitionLock, true);
+  assert.strictEqual(currentCandidates.length, 0);
+
+  // 假设点赞列表中有 2 篇是用户同时也收藏过的共存笔记
+  const sharedLikeCards = [
+    realCollectCards25[0], // 既收藏又点赞
+    realCollectCards25[1], // 既收藏又点赞
+    likedNotes421[0],
+    likedNotes421[1],
+  ];
+  // 换批后 newCards 包含 2 篇纯点赞卡片，newCards.length > 0
+  const unlockLike = canUnlock('like', sharedLikeCards, 300);
+  assert.strictEqual(unlockLike, true, '即便含有共存收藏笔记，只要包含真实点赞新卡片即安全开闸');
+  const syncLike = syncCards('like', sharedLikeCards);
+  assert.strictEqual(syncLike, true, '点赞卡片成功入库');
+  assert.strictEqual(currentCandidates.length, 4, '共存卡片与纯点赞卡片均正常展示');
 });
 
 
