@@ -3822,20 +3822,23 @@
    */
   function findNoteCardElement(noteId) {
     if (!noteId) return null;
-    const candidates = document.querySelectorAll(
-      'section.note-item a[href*="' + noteId + '"], [class*="note-item"] a[href*="' + noteId + '"], .feeds-container a[href*="' + noteId + '"], #userPageContainer a[href*="' + noteId + '"]'
-    );
-    for (let i = 0; i < candidates.length; i++) {
-      const el = candidates[i];
-      if (el.closest('#rn-sidepanel, #rn-stack-overlay, #rn-undo-container, .rn-panel')) {
-        continue;
-      }
-      const href = el.getAttribute('href') || el.href || '';
-      if (C.extractNoteId(href) === noteId) {
-        if (el.classList && (el.classList.contains('cover') || el.classList.contains('title'))) {
-          return el;
+    const targetId = String(noteId).toLowerCase();
+    const cards = document.querySelectorAll('section.note-item, [class*="note-item"]');
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      if (card.closest('#rn-sidepanel, #rn-stack-overlay, #rn-undo-container, .rn-panel')) continue;
+      const links = card.querySelectorAll('a[href]');
+      for (let j = 0; j < links.length; j++) {
+        const a = links[j];
+        const href = a.getAttribute('href') || a.href || '';
+        if (C.extractNoteId(href) === targetId) {
+          // 优先选取 a.cover 或 a.title，这是 Vue 绑定的主点击响应节点
+          const cover = card.querySelector('a.cover');
+          if (cover) return cover;
+          const title = card.querySelector('a.title');
+          if (title) return title;
+          return a;
         }
-        return el;
       }
     }
     return null;
@@ -3947,15 +3950,8 @@
     }
 
     // 从右侧列表（小眼睛）触发的预览：在新标签页安全打开，绝不破坏当前主页与侧边栏进度
-    const currentProfileMatch = location.pathname.match(PROFILE_RE);
-    const profileUserId = (currentProfileMatch && currentProfileMatch[1]) || (myProfileInfo && myProfileInfo.userId) || '';
     const token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
-    let finalUrl = '';
-    if (profileUserId) {
-      finalUrl = '/user/profile/' + profileUserId + '/' + noteId + (token ? ('?xsec_token=' + token + '&xsec_source=pc_user') : '?xsec_source=pc_user');
-    } else {
-      finalUrl = noteUrl || C.buildNoteUrl(noteId, token);
-    }
+    const finalUrl = C.buildNoteUrl(noteId, token);
     if (finalUrl) {
       showToast('该笔记尚未滚动加载，已在新标签页为您打开', 'info');
       window.open(finalUrl, '_blank', 'noopener');

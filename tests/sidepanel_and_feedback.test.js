@@ -3201,8 +3201,8 @@ test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫�
   assert.strictEqual(contentJs.includes("let originProfileUrl = '';"), true, '记录挂起前用户所在的个人主页完整 URL');
   assert.strictEqual(contentJs.includes("location.replace(originProfileUrl)"), true, '当路由误跳首页时立即纠偏回个人主页');
 
-  // 6. 验证远端/视口外未加载卡片预览时采用 profile 嵌套单页路由，严禁触发 /explore 路由跳出
-  assert.strictEqual(contentJs.includes("'/user/profile/' + profileUserId + '/' + noteId"), true, '视口外未加载卡片构建 profile 内部嵌套路由');
+  // 6. 验证远端/视口外未加载卡片预览时采用完整带 token 安全外链规范构建，严禁在当前页派发点击导致 300031 拦截或 /explore 跳出
+  assert.strictEqual(contentJs.includes("C.buildNoteUrl(noteId, token)"), true, '视口外未加载卡片构建携带安全 token 的完整标准外链');
   assert.strictEqual(contentJs.includes("setupPreviewModalWatcher"), true, '启动原生弹窗关闭守卫与监听');
   assert.strictEqual(contentJs.includes("activeModalPreview || stackSuspended"), true, '右侧列表与叠卡预览统一享受防跳首页保护与生命周期免疫');
 });
