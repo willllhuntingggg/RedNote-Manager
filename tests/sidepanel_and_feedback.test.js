@@ -3310,6 +3310,8 @@ test('情感化设计、断舍离微语录与彩蛋里程碑视觉动效系统',
   // 1. 侧边栏与页面端均具备成就里程碑彩蛋弹窗及纯 CSS 撒花微粒子系统
   assert.strictEqual(sidepanelHtml.includes('id="rn-milestone-modal"'), true, '侧边栏具备成就里程碑弹窗');
   assert.strictEqual(sidepanelHtml.includes('id="rn-confetti"'), true, '侧边栏具备撒花容器');
+  assert.strictEqual(sidepanelHtml.includes('id="rn-btn-preview-milestone"'), true, '维护面板具备一键预览里程碑成就测试按钮');
+  assert.strictEqual(sidepanelJs.includes('previewMilestoneBtn'), true, '侧边栏绑定里程碑一键预览测试事件');
   assert.strictEqual(sidepanelHtml.includes('id="rn-companion-banner"'), true, '侧边栏底部面板具备温情陪伴微语录');
   assert.strictEqual(sidepanelCss.includes('.rn-milestone-card'), true, '包含里程碑卡片高质感样式');
   assert.strictEqual(sidepanelCss.includes('@keyframes confettiFall'), true, '包含纯 CSS 撒花关键帧动画');

@@ -440,10 +440,6 @@ body {
   transition: all 0.15s ease;
   margin-left: 2px;
 }
-  color: var(--text-main);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
 
 .rn-mode-scan-btn:hover:not(:disabled) {
   background: var(--btn-hover-bg);

@@ -382,6 +382,72 @@ function showTabFollowHint(targetMode) {
   }, 3500);
 }
 
+/* ============================ 情感化伴随与成就里程碑 ============================ */
+
+let companionTimer = null;
+function startCompanionRotation() {
+  if (companionTimer) return;
+  updateCompanionText();
+  companionTimer = setInterval(updateCompanionText, 7000);
+}
+
+function stopCompanionRotation() {
+  if (companionTimer) {
+    clearInterval(companionTimer);
+    companionTimer = null;
+  }
+}
+
+function updateCompanionText() {
+  const el = $('rn-companion-text');
+  if (!el) return;
+  const quote = (typeof RNCore !== 'undefined' && RNCore.getEmotionQuote)
+    ? RNCore.getEmotionQuote('cooldown')
+    : '正在轻柔处理中… 给小红书服务器喘口气的机会 🍃';
+  el.style.opacity = '0';
+  setTimeout(function () {
+    el.textContent = quote;
+    el.style.opacity = '1';
+  }, 200);
+}
+
+function showSidepanelMilestoneModal(milestone, lifetimeCount) {
+  if (!milestone) return;
+  const modal = $('rn-milestone-modal');
+  if (!modal) return;
+
+  if ($('rn-m-badge')) $('rn-m-badge').textContent = milestone.badge || '🌱';
+  if ($('rn-m-tag')) $('rn-m-tag').textContent = milestone.tag || ('MILESTONE ' + milestone.count);
+  if ($('rn-m-title')) $('rn-m-title').textContent = milestone.title || '达成成就';
+  if ($('rn-m-desc')) $('rn-m-desc').textContent = milestone.desc || '';
+
+  const quotes = Array.isArray(milestone.quotes) ? milestone.quotes : [];
+  const quote = quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : '愿你在纷繁世界里，始终保持内心的澄澈与专注。';
+  if ($('rn-m-quote')) $('rn-m-quote').textContent = quote;
+  if ($('rn-m-count')) $('rn-m-count').textContent = String(lifetimeCount || milestone.count);
+
+  // 生成纯 CSS 撒花微粒子 (Confetti)
+  const confettiBox = $('rn-confetti');
+  if (confettiBox) {
+    confettiBox.innerHTML = '';
+    const colors = ['#f59e0b', '#ff2442', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+    for (let i = 0; i < 28; i++) {
+      const piece = document.createElement('div');
+      piece.className = 'rn-confetti-piece';
+      piece.style.left = (Math.random() * 96) + '%';
+      piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      piece.style.animationDelay = (Math.random() * 1.2) + 's';
+      piece.style.animationDuration = (1.8 + Math.random() * 1.2) + 's';
+      piece.style.width = (5 + Math.random() * 5) + 'px';
+      piece.style.height = (7 + Math.random() * 6) + 'px';
+      piece.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
+      confettiBox.appendChild(piece);
+    }
+  }
+
+  modal.hidden = false;
+}
+
 function applyState(st) {
   if (!st) return;
   if (disconnectTimer) {
@@ -1129,72 +1195,6 @@ function bindEvents() {
     }, duration || 3200);
   }
 
-  /* ============================ 情感化伴随与成就里程碑 ============================ */
-
-  let companionTimer = null;
-  function startCompanionRotation() {
-    if (companionTimer) return;
-    updateCompanionText();
-    companionTimer = setInterval(updateCompanionText, 7000);
-  }
-
-  function stopCompanionRotation() {
-    if (companionTimer) {
-      clearInterval(companionTimer);
-      companionTimer = null;
-    }
-  }
-
-  function updateCompanionText() {
-    const el = $('rn-companion-text');
-    if (!el) return;
-    const quote = (typeof RNCore !== 'undefined' && RNCore.getEmotionQuote)
-      ? RNCore.getEmotionQuote('cooldown')
-      : '正在轻柔处理中… 给小红书服务器喘口气的机会 🍃';
-    el.style.opacity = '0';
-    setTimeout(function () {
-      el.textContent = quote;
-      el.style.opacity = '1';
-    }, 200);
-  }
-
-  function showSidepanelMilestoneModal(milestone, lifetimeCount) {
-    if (!milestone) return;
-    const modal = $('rn-milestone-modal');
-    if (!modal) return;
-
-    if ($('rn-m-badge')) $('rn-m-badge').textContent = milestone.badge || '🌱';
-    if ($('rn-m-tag')) $('rn-m-tag').textContent = milestone.tag || ('MILESTONE ' + milestone.count);
-    if ($('rn-m-title')) $('rn-m-title').textContent = milestone.title || '达成成就';
-    if ($('rn-m-desc')) $('rn-m-desc').textContent = milestone.desc || '';
-
-    const quotes = Array.isArray(milestone.quotes) ? milestone.quotes : [];
-    const quote = quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : '愿你在纷繁世界里，始终保持内心的澄澈与专注。';
-    if ($('rn-m-quote')) $('rn-m-quote').textContent = quote;
-    if ($('rn-m-count')) $('rn-m-count').textContent = String(lifetimeCount || milestone.count);
-
-    // 生成纯 CSS 撒花微粒子 (Confetti)
-    const confettiBox = $('rn-confetti');
-    if (confettiBox) {
-      confettiBox.innerHTML = '';
-      const colors = ['#f59e0b', '#ff2442', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
-      for (let i = 0; i < 28; i++) {
-        const piece = document.createElement('div');
-        piece.className = 'rn-confetti-piece';
-        piece.style.left = (Math.random() * 96) + '%';
-        piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-        piece.style.animationDelay = (Math.random() * 1.2) + 's';
-        piece.style.animationDuration = (1.8 + Math.random() * 1.2) + 's';
-        piece.style.width = (5 + Math.random() * 5) + 'px';
-        piece.style.height = (7 + Math.random() * 6) + 'px';
-        piece.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
-        confettiBox.appendChild(piece);
-      }
-    }
-
-    modal.hidden = false;
-  }
-
   const closeMilestone = function () {
     const modal = $('rn-milestone-modal');
     if (modal) modal.hidden = true;
@@ -1250,6 +1250,18 @@ function bindEvents() {
     refreshBtn.addEventListener('click', async function () {
       await sendToTab('RN_REFRESH_CACHE');
       requestState();
+    });
+  }
+
+  const previewMilestoneBtn = $('rn-btn-preview-milestone');
+  let previewMilestoneIdx = 0;
+  if (previewMilestoneBtn) {
+    previewMilestoneBtn.addEventListener('click', function () {
+      const list = (C && C.MILESTONES) || [];
+      if (!list.length) return;
+      const m = list[previewMilestoneIdx % list.length];
+      previewMilestoneIdx++;
+      showSidepanelMilestoneModal(m, m.count);
     });
   }
 
