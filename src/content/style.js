@@ -339,23 +339,33 @@ globalThis.RNStyle = `
   }
   .rn-stack-order-group {
     display: inline-flex !important;
+    align-items: center !important;
     background: rgba(255, 255, 255, 0.08) !important;
     border: 1px solid rgba(255, 255, 255, 0.14) !important;
     border-radius: 8px !important;
     padding: 2px !important;
     gap: 2px !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+    height: 26px !important;
   }
   .rn-stack-order-btn {
     all: unset !important;
     cursor: pointer !important;
-    padding: 3px 9px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 20px !important;
+    padding: 0 9px !important;
     border-radius: 6px !important;
     font-size: 11.5px !important;
     font-weight: 500 !important;
     color: #a0a0b2 !important;
     transition: all 0.15s ease !important;
-    line-height: 1.3 !important;
+    line-height: 1 !important;
     user-select: none !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
   }
   .rn-stack-order-btn:hover {
     color: #ffffff !important;
@@ -379,32 +389,6 @@ globalThis.RNStyle = `
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
-  }
-  .rn-stack-header-undo {
-    all: unset !important;
-    cursor: pointer !important;
-    padding: 3px 10px !important;
-    border-radius: 12px !important;
-    font-size: 11.5px !important;
-    font-weight: 600 !important;
-    color: #ff8597 !important;
-    background: rgba(255, 46, 77, 0.14) !important;
-    border: 1px solid rgba(255, 46, 77, 0.35) !important;
-    transition: all 0.18s ease !important;
-    user-select: none !important;
-  }
-  .rn-stack-header-undo:hover:not(:disabled) {
-    background: rgba(255, 46, 77, 0.28) !important;
-    color: #ffffff !important;
-    border-color: #ff2e4d !important;
-    box-shadow: 0 0 10px rgba(255, 46, 77, 0.35) !important;
-  }
-  .rn-stack-header-undo:disabled {
-    opacity: 0.35 !important;
-    cursor: not-allowed !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    background: rgba(255, 255, 255, 0.05) !important;
-    color: #8c8c9e !important;
   }
   .rn-stack-close {
     all: unset !important;

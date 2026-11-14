@@ -91,6 +91,14 @@
   --icobtn-active-border: rgba(255, 46, 77, 0.5);
   --icobtn-active-shadow: 0 0 8px rgba(255, 46, 77, 0.25);
 
+  /* 赞赏咖啡按钮 */
+  --sponsor-btn-bg: rgba(30, 58, 138, 0.22);
+  --sponsor-btn-border: rgba(59, 130, 246, 0.35);
+  --sponsor-btn-color: #93c5fd;
+  --sponsor-btn-hover-bg: #2563eb;
+  --sponsor-btn-hover-border: #3b82f6;
+  --sponsor-btn-hover-color: #ffffff;
+
   color-scheme: dark;
 }
 
@@ -183,6 +191,14 @@ html[data-theme="light"] {
   --icobtn-active-color: #1e293b;
   --icobtn-active-border: #cbd5e1;
   --icobtn-active-shadow: none;
+
+  /* 赞赏咖啡按钮：浅色模式下采用清爽高对比度深蓝文字与淡蓝背景，确保 100% 清晰可见 */
+  --sponsor-btn-bg: #eff6ff;
+  --sponsor-btn-border: #bfdbfe;
+  --sponsor-btn-color: #1d4ed8;
+  --sponsor-btn-hover-bg: #2563eb;
+  --sponsor-btn-hover-border: #1d4ed8;
+  --sponsor-btn-hover-color: #ffffff;
 
   color-scheme: light;
 }
@@ -1194,9 +1210,12 @@ body {
   gap: 4px;
 }
 
-.rn-line.rn-l-ok { color: #52d98b; }
-.rn-line.rn-l-err { color: #ff7287; }
-.rn-line.rn-l-warn { color: #f5b942; }
+/* 日志文字保持纯粹单色排版，彻底移除花哨彩色 */
+.rn-line.rn-l-ok,
+.rn-line.rn-l-err,
+.rn-line.rn-l-warn {
+  color: var(--log-text);
+}
 .rn-line .rn-t { color: var(--log-time); }
 .rn-line .rn-msg { flex: 1 1 auto; }
 
@@ -1637,9 +1656,9 @@ html[data-theme="light"] .rn-badge-reason {
 }
 
 .rn-btn-sponsor-open {
-  background: rgba(30, 58, 138, 0.16);
-  color: #93c5fd;
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: var(--sponsor-btn-bg);
+  color: var(--sponsor-btn-color);
+  border: 1px solid var(--sponsor-btn-border);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -1650,9 +1669,9 @@ html[data-theme="light"] .rn-badge-reason {
 }
 
 .rn-btn-sponsor-open:hover {
-  background: rgba(30, 58, 138, 0.32);
-  border-color: #60a5fa;
-  color: #ffffff;
+  background: var(--sponsor-btn-hover-bg);
+  border-color: var(--sponsor-btn-hover-border);
+  color: var(--sponsor-btn-hover-color);
   box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
 }
 
@@ -1668,18 +1687,18 @@ html[data-theme="light"] .rn-badge-reason {
   font-size: 10px;
   line-height: 16px;
   border-radius: 99px;
-  background: rgba(30, 58, 138, 0.2);
-  color: #93c5fd;
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  font-weight: 500;
+  background: var(--sponsor-btn-bg);
+  color: var(--sponsor-btn-color);
+  border: 1px solid var(--sponsor-btn-border);
+  font-weight: 600;
   vertical-align: middle;
   transition: all 0.15s;
 }
 
 .rn-line-sponsor-btn:hover {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #3b82f6;
+  background: var(--sponsor-btn-hover-bg);
+  color: var(--sponsor-btn-hover-color);
+  border-color: var(--sponsor-btn-hover-border);
   box-shadow: 0 0 8px rgba(37, 99, 235, 0.45);
 }
 

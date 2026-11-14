@@ -1478,8 +1478,8 @@ test('叠卡模式快捷键视觉美学：移除破坏圆形关闭按钮与翻�
   assert.ok(contentCode.includes('class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)">'), '关闭按钮保持纯粹简洁');
   assert.ok(!contentCode.includes('>× <kbd class="rn-stack-nav-kbd">Esc</kbd><'), '关闭按钮内禁止内嵌 Esc 徽标导致变形');
 
-  // 2. 撤销与翻页按钮不臃肿塞键帽，保持设计感，且智能自适应系统快捷键（Mac ⌘Z / Win Ctrl+Z）
-  assert.ok(contentCode.includes('class="rn-stack-header-undo" id="rn-stack-undo" type="button"'), '撤销按钮文案整洁自然');
+  // 2. 叠卡右上角移除冗余撤销按钮（精简头部），底部独立栏自适应系统撤销快捷键（Mac ⌘Z / Win Ctrl+Z）
+  assert.ok(!contentCode.includes('id="rn-stack-undo"'), '右上角移除冗余撤销按钮，保持头部极简');
   assert.ok(contentCode.includes('undoKeyLabel'), '撤销快捷键自适应系统架构');
   assert.ok(contentCode.includes('id="rn-stack-prev"') && contentCode.includes('上一个'), '上一个按钮文案整洁自然且专业');
   assert.ok(contentCode.includes('id="rn-stack-next"') && contentCode.includes('下一个'), '下一个按钮文案整洁自然且专业');

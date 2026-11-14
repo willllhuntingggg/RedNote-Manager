@@ -2294,11 +2294,7 @@
       filterHint = ' · "' + stackState.filter.keyword + '"';
     }
 
-    if (stackState.randomMode) {
-      stackState.els.counter.textContent = '🎲 随机 · 第 ' + (idx + 1) + ' / ' + total + ' 篇' + filterHint;
-    } else {
-      stackState.els.counter.textContent = '第 ' + (idx + 1) + ' / ' + total + ' 篇' + filterHint;
-    }
+    stackState.els.counter.textContent = '第 ' + (idx + 1) + ' / ' + total + ' 篇' + filterHint;
 
     // 更新大图封面
     if (note.cover) {
@@ -2374,12 +2370,12 @@
     if (stackState.randomMode) {
       stackState.els.btnPrev.disabled = (!stackState.history || stackState.history.length === 0) && idx <= 0;
       stackState.els.btnNext.disabled = total <= 1;
-      stackState.els.btnNext.innerHTML = '随机下一个 <span>🎲</span>';
+      stackState.els.btnNext.innerHTML = '随机下一个 <span>→</span>';
       stackState.els.btnNext.title = '随机下一张 (快捷键: →)';
     } else {
       stackState.els.btnPrev.disabled = idx <= 0;
       stackState.els.btnNext.disabled = idx >= total - 1;
-      stackState.els.btnNext.innerHTML = '下一个 <span>➡</span>';
+      stackState.els.btnNext.innerHTML = '下一个 <span>→</span>';
       stackState.els.btnNext.title = '下一张 (快捷键: →)';
     }
 
@@ -3364,7 +3360,6 @@
       '      <span class="rn-stack-counter" id="rn-stack-counter">第 0 / 0 篇</span>',
       '    </div>',
       '    <div class="rn-stack-header-actions">',
-      '      <button class="rn-stack-header-undo" id="rn-stack-undo" type="button" title="撤销刚才处理的笔记 (快捷键: ' + undoKeyLabel + ')" disabled><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:2px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>撤销刚才</button>',
       '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>',
       '    </div>',
       '  </div>',
