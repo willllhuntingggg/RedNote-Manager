@@ -2923,17 +2923,17 @@ test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支
   assert.strictEqual(mockResolveEffectiveTheme(undefined, true), 'dark', '未定义时默认 auto，随系统深色解析为 dark');
 });
 
-test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收起，集成检测操作与设置齿轮)', () => {
-  // 1. 验证 HTML 结构：顶部集成模式与检测操作 + 右侧设置/关闭按钮 + 双视图容器
+test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收起，集成读取操作与设置齿轮)', () => {
+  // 1. 验证 HTML 结构：顶部集成模式与读取操作 + 右侧设置/关闭按钮 + 双视图容器
   const htmlPath = path.join(__dirname, '../src/sidepanel/sidepanel.html');
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
-  // 顶栏元素：原Logo和产品名称已精简移除，直接以模式状态与检测按钮为标题栏，右侧保留设置齿轮与关闭按钮
+  // 顶栏元素：原Logo和产品名称已精简移除，直接以模式状态与读取按钮为标题栏，右侧保留设置齿轮与关闭按钮
   assert.strictEqual(htmlContent.includes('id="rn-btn-close"'), true, '顶栏右侧包含关闭设置按钮 #rn-btn-close');
   assert.strictEqual(htmlContent.includes('id="rn-hdr-logo"'), false, '原产品Logo已彻底精简移除');
   assert.strictEqual(htmlContent.includes('id="rn-title"'), false, '原静态产品标题已精简移除');
   assert.strictEqual(htmlContent.includes('id="rn-mode-title"'), true, '顶栏直接作为模式标题容器');
-  assert.strictEqual(htmlContent.includes('id="rn-scan"'), true, '顶栏集成检测/停止按钮');
+  assert.strictEqual(htmlContent.includes('id="rn-scan"'), true, '顶栏集成读取/停止按钮');
   assert.strictEqual(htmlContent.includes('id="rn-gear"'), true, '顶栏保留偏好设置入口齿轮按钮');
 
   // 视图平级隔离结构
@@ -2971,7 +2971,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
     'rn-settings': { hidden: true, scrollTop: 120, classList: new Set() },
     'rn-btn-close': { hidden: true },
     'rn-scan': { hidden: false },
-    'rn-mode-title': { textContent: '检测到 0 条收藏' },
+    'rn-mode-title': { textContent: '已读取 0 条收藏' },
     'rn-gear': {
       hidden: false,
       classList: {
@@ -3029,7 +3029,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-main-view'].hidden, false, '初始状态主工作区可见');
   assert.strictEqual(mockElements['rn-settings'].hidden, true, '初始状态偏好设置隐藏');
   assert.strictEqual(mockElements['rn-btn-close'].hidden, true, '初始状态关闭按钮隐藏');
-  assert.strictEqual(mockElements['rn-scan'].hidden, false, '初始状态检测按钮展示');
+  assert.strictEqual(mockElements['rn-scan'].hidden, false, '初始状态读取按钮展示');
   assert.strictEqual(mockElements['rn-gear'].hidden, false, '初始状态齿轮展示');
 
   // 执行切换到偏好设置视图 (向左滑入)
@@ -3039,7 +3039,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-settings'].hidden, false, '设置视图激活可见');
   assert.strictEqual(mockElements['rn-settings'].scrollTop, 0, '切入时自动回到顶部');
   assert.strictEqual(mockElements['rn-btn-close'].hidden, false, '关闭按钮显现于顶栏右侧');
-  assert.strictEqual(mockElements['rn-scan'].hidden, true, '进入设置时检测按钮隐藏');
+  assert.strictEqual(mockElements['rn-scan'].hidden, true, '进入设置时读取按钮隐藏');
   assert.strictEqual(mockElements['rn-gear'].hidden, true, '齿轮按钮隐藏');
 
   // 执行返回主视图 (原路向右收起)
@@ -3048,7 +3048,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockBodyClassList.has('rn-settings-open'), false, '退出设置时移除类名，原路向右收起滑出');
   assert.strictEqual(mockElements['rn-settings'].hidden, true, '偏好设置完全隐藏');
   assert.strictEqual(mockElements['rn-btn-close'].hidden, true, '关闭按钮隐藏');
-  assert.strictEqual(mockElements['rn-scan'].hidden, false, '检测按钮重新展示');
+  assert.strictEqual(mockElements['rn-scan'].hidden, false, '读取按钮重新展示');
   assert.strictEqual(mockElements['rn-gear'].hidden, false, '齿轮按钮重新恢复展示');
 });
 
@@ -3065,9 +3065,13 @@ test('界面细节与控制状态交互演进：统计行拆分精简、已读�
   assert.strictEqual(htmlContent.includes('<div class="rn-stats">'), false, '主面板已彻底移除冗余的统计看板行');
   assert.strictEqual(htmlContent.includes('id="rn-s-sel"'), false, '已勾选计数已从独立DOM中移除，避免与底部按钮重复');
 
-  // 2. 已读取计数置于顶部模式行
+  // 2. 已读取计数置于顶部模式行，按钮紧邻左侧标题，且tooltip具备完整教学指引
   assert.strictEqual(htmlContent.includes('id="rn-s-cand"'), true, '模式指示条包含 #rn-s-cand 已读取计数');
-  assert.strictEqual(htmlContent.includes('检测到'), true, '顶栏标题精简规范对齐「检测到 N 条收藏」');
+  assert.strictEqual(htmlContent.includes('已读取'), true, '顶栏标题规范对齐「已读取 N 条收藏」');
+  assert.strictEqual(jsContent.includes('批量管理前需先读取页面数据'), true, '读取按钮包含解释新手需先读取数据的提示');
+  assert.strictEqual(jsContent.includes('手动浏览'), true, '读取按钮包含手动在小红书页面滚动浏览加载的提示');
+  assert.strictEqual(cssContent.includes('font-size: 15px'), true, '标题文字具备标题级字号 (15px)');
+  assert.strictEqual(cssContent.includes('font-weight: 700'), true, '标题文字具备加粗权重 (700)');
 
   // 3. 已处理与失败计数放置于操作日志区头部
   assert.strictEqual(htmlContent.includes('id="rn-s-ok"'), true, '日志区包含 #rn-s-ok 已处理计数');

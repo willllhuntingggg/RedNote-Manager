@@ -303,11 +303,19 @@ function renderDisconnected(message) {
   executeRenderDisconnected(message);
 }
 
+const SCAN_BTN_TITLE_IDLE =
+  '批量管理前需先读取页面数据：\n' +
+  '• 点击【读取】：自动向下滚动页面并读取更多笔记\n' +
+  '• 手动浏览：在小红书页面自主下滑浏览，笔记也会实时自动载入\n' +
+  '（按住 Shift 点击可清空缓存全新读取）';
+
+const SCAN_BTN_TITLE_BUSY = '点击停止当前自动读取/执行操作';
+
 function executeRenderDisconnected(message) {
   lastState = null;
   const bannerTitle = $('rn-mode-title');
   if (bannerTitle) {
-    bannerTitle.innerHTML = '检测到 <b id="rn-s-cand">–</b> 条收藏';
+    bannerTitle.innerHTML = '已读取 <b id="rn-s-cand">–</b> 条收藏';
   } else if ($('rn-s-cand')) {
     $('rn-s-cand').textContent = '–';
   }
@@ -321,8 +329,9 @@ function executeRenderDisconnected(message) {
   if ($('rn-stop')) $('rn-stop').disabled = true;
   if ($('rn-scan')) {
     $('rn-scan').disabled = true;
-    $('rn-scan').textContent = '检测';
+    $('rn-scan').textContent = '读取';
     $('rn-scan').className = 'rn-btn rn-mini rn-mode-scan-btn';
+    $('rn-scan').title = SCAN_BTN_TITLE_IDLE;
   }
   if ($('rn-undo')) $('rn-undo').disabled = true;
   if ($('rn-log-undo')) {
@@ -422,12 +431,12 @@ function applyState(st) {
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_NOTES;
     } else if (isUnlike) {
-      if (bannerTitle) bannerTitle.innerHTML = '检测到 <b id="rn-s-cand">' + candCount + '</b> 条点赞';
+      if (bannerTitle) bannerTitle.innerHTML = '已读取 <b id="rn-s-cand">' + candCount + '</b> 条点赞';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_HEART;
     } else {
-      if (bannerTitle) bannerTitle.innerHTML = '检测到 <b id="rn-s-cand">' + candCount + '</b> 条收藏';
+      if (bannerTitle) bannerTitle.innerHTML = '已读取 <b id="rn-s-cand">' + candCount + '</b> 条收藏';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_STAR;
@@ -484,17 +493,17 @@ function applyState(st) {
     stopBtn.disabled = !isBusy;
   }
 
-  // 检测与停止按钮双态合一（位于顶部标题栏右侧）
+  // 读取与停止按钮双态合一（紧跟在顶部标题之后）
   if (scanBtn) {
     scanBtn.disabled = false;
     if (isBusy) {
       scanBtn.textContent = '⏹ 停止';
       scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
-      scanBtn.title = '点击停止当前操作';
+      scanBtn.title = SCAN_BTN_TITLE_BUSY;
     } else {
-      scanBtn.textContent = '检测';
+      scanBtn.textContent = '读取';
       scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
-      scanBtn.title = '检测当前页面列表（按住 Shift 点击可清空缓存全新检测）';
+      scanBtn.title = SCAN_BTN_TITLE_IDLE;
     }
   }
 
@@ -953,16 +962,16 @@ function bindEvents() {
     });
   });
 
-  // 检测与停止按钮双态事件
+  // 读取与停止按钮双态事件
   const scanBtn = $('rn-scan');
   if (scanBtn) {
     scanBtn.addEventListener('click', async function (ev) {
       const isBusy = (lastState && lastState.running) || (lastState && lastState.scanning);
       if (isBusy) {
-        // 乐观即刻切为普通检测状态，无延迟响应用户操作
-        scanBtn.textContent = '检测';
+        // 乐观即刻切为普通读取状态，无延迟响应用户操作
+        scanBtn.textContent = '读取';
         scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
-        scanBtn.title = '检测当前页面列表（按住 Shift 点击可清空缓存全新检测）';
+        scanBtn.title = SCAN_BTN_TITLE_IDLE;
         if (lastState) {
           lastState.running = false;
           lastState.scanning = false;
@@ -973,7 +982,7 @@ function bindEvents() {
         // 乐观即刻切换为停止按钮状态，红底醒目并提供即时视觉反馈
         scanBtn.textContent = '⏹ 停止';
         scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
-        scanBtn.title = '点击停止当前操作';
+        scanBtn.title = SCAN_BTN_TITLE_BUSY;
         if (lastState) {
           lastState.scanning = true;
         }
@@ -993,7 +1002,7 @@ function bindEvents() {
       if (scanBtn) {
         scanBtn.textContent = '⏹ 停止';
         scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
-        scanBtn.title = '点击停止当前操作';
+        scanBtn.title = SCAN_BTN_TITLE_BUSY;
       }
       if (lastState) lastState.running = true;
       const res = await sendToTab('RN_ACTION', { action: 'start' });
@@ -1006,9 +1015,9 @@ function bindEvents() {
   if (stopBtn) {
     stopBtn.addEventListener('click', async function () {
       if (scanBtn) {
-        scanBtn.textContent = '检测';
+        scanBtn.textContent = '读取';
         scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
-        scanBtn.title = '检测当前页面列表（按住 Shift 点击可清空缓存全新检测）';
+        scanBtn.title = SCAN_BTN_TITLE_IDLE;
       }
       if (lastState) {
         lastState.running = false;
