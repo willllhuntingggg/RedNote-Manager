@@ -3307,20 +3307,23 @@ test('情感化设计、断舍离微语录与彩蛋里程碑视觉动效系统',
   const contentJs = fs.readFileSync(path.join(rootDir, 'src/content/content.js'), 'utf8');
   const styleJs = fs.readFileSync(path.join(rootDir, 'src/content/style.js'), 'utf8');
 
-  // 1. 侧边栏与页面端均具备成就里程碑彩蛋弹窗及纯 CSS 撒花微粒子系统
-  assert.strictEqual(sidepanelHtml.includes('id="rn-milestone-modal"'), true, '侧边栏具备成就里程碑弹窗');
-  assert.strictEqual(sidepanelHtml.includes('id="rn-confetti"'), true, '侧边栏具备撒花容器');
+  // 1. 里程碑成就激励统一步调在网页全屏视口居中呈现（避免侧边栏重复遮挡与拥挤）
   assert.strictEqual(sidepanelHtml.includes('id="rn-btn-preview-milestone"'), true, '维护面板具备一键预览里程碑成就测试按钮');
   assert.strictEqual(sidepanelJs.includes('previewMilestoneBtn'), true, '侧边栏绑定里程碑一键预览测试事件');
+  assert.strictEqual(sidepanelJs.includes('RN_PREVIEW_MILESTONE'), true, '侧边栏点击预览向页面端派发视口中央全屏展示指令');
   assert.strictEqual(sidepanelHtml.includes('id="rn-companion-banner"'), true, '侧边栏底部面板具备温情陪伴微语录');
-  assert.strictEqual(sidepanelCss.includes('.rn-milestone-card'), true, '包含里程碑卡片高质感样式');
-  assert.strictEqual(sidepanelCss.includes('@keyframes confettiFall'), true, '包含纯 CSS 撒花关键帧动画');
-  assert.strictEqual(sidepanelCss.includes('@keyframes badgePop'), true, '包含徽章弹性放大弹性动画');
 
-  // 2. 页面端 Shadow DOM 模态框与动画系统
-  assert.strictEqual(contentJs.includes('rn-page-milestone-overlay'), true, '页面端注入专属成就里程碑浮层');
+  // 2. 页面端 Shadow DOM 模态框与视口中央动画系统
+  assert.strictEqual(contentJs.includes('rn-page-milestone-overlay'), true, '页面端注入专属成就里程碑全屏浮层');
+  assert.strictEqual(contentJs.includes('RN_PREVIEW_MILESTONE'), true, '页面端支持响应视口中央里程碑预览指令');
   assert.strictEqual(styleJs.includes('.rn-page-milestone-overlay'), true, '页面端具备里程碑遮罩样式');
   assert.strictEqual(styleJs.includes('@keyframes rnConfettiFall'), true, '页面端具备撒花动画');
+
+  // 叠卡模式开启时侧边栏默认自动收起与叠卡自动下一个开关精简
+  assert.strictEqual(contentJs.includes('RN_STACK_OPENED'), true, '叠卡开启时向运行时广播开启事件');
+  assert.strictEqual(sidepanelJs.includes('RN_STACK_OPENED'), true, '侧边栏收到叠卡开启事件时自动收起关闭');
+  assert.strictEqual(contentJs.includes('autoAdvance: true'), true, '叠卡模式默认始终保持自动下一个');
+  assert.strictEqual(!contentJs.includes('rn-stack-auto-toggle'), true, '叠卡操作后自动下一个开关已被精简移除');
 
   // 3. 初始空状态共鸣设计与随机文案抽取
   assert.strictEqual(sidepanelJs.includes("RNCore.getEmotionQuote('empty', mode)"), true, '空状态支持随机抽取走心共鸣语录');

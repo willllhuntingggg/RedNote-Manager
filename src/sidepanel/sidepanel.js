@@ -411,43 +411,6 @@ function updateCompanionText() {
   }, 200);
 }
 
-function showSidepanelMilestoneModal(milestone, lifetimeCount) {
-  if (!milestone) return;
-  const modal = $('rn-milestone-modal');
-  if (!modal) return;
-
-  if ($('rn-m-badge')) $('rn-m-badge').textContent = milestone.badge || '🌱';
-  if ($('rn-m-tag')) $('rn-m-tag').textContent = milestone.tag || ('MILESTONE ' + milestone.count);
-  if ($('rn-m-title')) $('rn-m-title').textContent = milestone.title || '达成成就';
-  if ($('rn-m-desc')) $('rn-m-desc').textContent = milestone.desc || '';
-
-  const quotes = Array.isArray(milestone.quotes) ? milestone.quotes : [];
-  const quote = quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : '愿你在纷繁世界里，始终保持内心的澄澈与专注。';
-  if ($('rn-m-quote')) $('rn-m-quote').textContent = quote;
-  if ($('rn-m-count')) $('rn-m-count').textContent = String(lifetimeCount || milestone.count);
-
-  // 生成纯 CSS 撒花微粒子 (Confetti)
-  const confettiBox = $('rn-confetti');
-  if (confettiBox) {
-    confettiBox.innerHTML = '';
-    const colors = ['#f59e0b', '#ff2442', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
-    for (let i = 0; i < 28; i++) {
-      const piece = document.createElement('div');
-      piece.className = 'rn-confetti-piece';
-      piece.style.left = (Math.random() * 96) + '%';
-      piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-      piece.style.animationDelay = (Math.random() * 1.2) + 's';
-      piece.style.animationDuration = (1.8 + Math.random() * 1.2) + 's';
-      piece.style.width = (5 + Math.random() * 5) + 'px';
-      piece.style.height = (7 + Math.random() * 6) + 'px';
-      piece.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
-      confettiBox.appendChild(piece);
-    }
-  }
-
-  modal.hidden = false;
-}
-
 function applyState(st) {
   if (!st) return;
   if (disconnectTimer) {
@@ -1195,13 +1158,6 @@ function bindEvents() {
     }, duration || 3200);
   }
 
-  const closeMilestone = function () {
-    const modal = $('rn-milestone-modal');
-    if (modal) modal.hidden = true;
-  };
-  if ($('rn-milestone-close')) $('rn-milestone-close').addEventListener('click', closeMilestone);
-  if ($('rn-milestone-ok')) $('rn-milestone-ok').addEventListener('click', closeMilestone);
-
   async function runDiagnosisWithFeedback(btn) {
     const originalText = btn ? btn.textContent : '';
     if (btn) {
@@ -1256,12 +1212,15 @@ function bindEvents() {
   const previewMilestoneBtn = $('rn-btn-preview-milestone');
   let previewMilestoneIdx = 0;
   if (previewMilestoneBtn) {
-    previewMilestoneBtn.addEventListener('click', function () {
+    previewMilestoneBtn.addEventListener('click', async function () {
       const list = (C && C.MILESTONES) || [];
       if (!list.length) return;
       const m = list[previewMilestoneIdx % list.length];
       previewMilestoneIdx++;
-      showSidepanelMilestoneModal(m, m.count);
+      const res = await sendToTab('RN_PREVIEW_MILESTONE', { milestone: m, lifetime: m.count });
+      if (!res || !res.ok) {
+        log('请先在左侧打开小红书页面以在视口中央全屏预览里程碑特效', 'warn');
+      }
     });
   }
 
@@ -1435,6 +1394,9 @@ function bindEvents() {
         alert('未检测到小红书页面或通信超时。\n请确认左侧网页已打开小红书（xiaohongshu.com）主页并刷新页面重试。');
       } else if (!res.ok) {
         alert(res.reason || '当前未检测到笔记卡片：\n请在小红书页面向下滚动浏览加载内容，或点击「读取列表」后再试。');
+      } else {
+        // 叠卡速览开启成功：侧边栏默认自动收起/关闭，为用户提供纯净全屏视野；用户可随时再次点击插件图标重新打开
+        try { window.close(); } catch (e) {}
       }
     });
   }
@@ -1837,11 +1799,19 @@ function bindEvents() {
 
   // 监听来自 content.js 的主动状态广播（保证实时性）
   chrome.runtime.onMessage.addListener(function (msg) {
-    if (!msg || typeof msg.type !== 'string') return;
+    if (!msg) return;
+    if (msg.type === 'RN_STACK_OPENED' || msg.action === 'RN_STACK_OPENED') {
+      // 页面端已开启叠卡速览模式：侧边栏默认自动收起/关闭，为用户让出全屏视野
+      try { window.close(); } catch (e) {}
+      return;
+    }
+    if (typeof msg.type !== 'string') return;
     if (msg.type === 'RN_STATE_UPDATED' && msg.state) {
       applyState(msg.state);
     } else if (msg.type === 'RN_MILESTONE_UNLOCKED' && msg.milestone) {
-      showSidepanelMilestoneModal(msg.milestone, msg.lifetime);
+      // 页面端已在视口正中央大屏弹出里程碑成就与撒花特效，侧边栏仅在运行日志中记录喜讯
+      const m = msg.milestone;
+      log('达成里程碑成就 [' + (m.badge || '✨') + ' ' + (m.title || '') + ']！累计已断舍离 ' + (msg.lifetime || m.count) + ' 篇笔记 🌿', 'ok');
     } else if (msg.type === 'RN_FILTER_CLEARED') {
       const qInput = $('rn-q');
       const qClearBtn = $('rn-search-clear');

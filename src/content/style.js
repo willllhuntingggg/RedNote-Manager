@@ -413,61 +413,6 @@ globalThis.RNStyle = `
     background: rgba(255, 255, 255, 0.25) !important;
   }
 
-  /* 自动下一个开关栏 */
-  .rn-stack-auto-row {
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    gap: 10px !important;
-    font-size: 12px !important;
-    color: #cfcfe0 !important;
-    padding: 0 4px 6px 4px !important;
-  }
-  .rn-stack-opt {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-  }
-  .rn-stack-toggle {
-    position: relative !important;
-    display: inline-block !important;
-    width: 34px !important;
-    height: 18px !important;
-    cursor: pointer !important;
-  }
-  .rn-stack-toggle input {
-    opacity: 0 !important;
-    width: 0 !important;
-    height: 0 !important;
-    position: absolute !important;
-  }
-  .rn-stack-slider {
-    position: absolute !important;
-    cursor: pointer !important;
-    inset: 0 !important;
-    background: #333342 !important;
-    border-radius: 18px !important;
-    transition: background 0.2s ease !important;
-  }
-  .rn-stack-slider::before {
-    position: absolute !important;
-    content: "" !important;
-    height: 14px !important;
-    width: 14px !important;
-    left: 2px !important;
-    bottom: 2px !important;
-    background: white !important;
-    border-radius: 50% !important;
-    transition: transform 0.2s ease !important;
-  }
-  .rn-stack-toggle input:checked + .rn-stack-slider {
-    background: #ff2e4d !important;
-  }
-  .rn-stack-toggle input:checked + .rn-stack-slider::before {
-    transform: translateX(16px) !important;
-  }
-
   /* 卡片堆叠区域 */
   .rn-stack-deck {
     position: relative !important;

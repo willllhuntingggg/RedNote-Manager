@@ -1953,8 +1953,6 @@
   };
 
   try {
-    const savedAuto = localStorage.getItem('rn:stack_auto_advance');
-    if (savedAuto !== null) stackState.autoAdvance = savedAuto === 'true';
     const savedOrder = localStorage.getItem('rn:stack_order_mode');
     if (savedOrder && (savedOrder === 'asc' || savedOrder === 'desc' || savedOrder === 'random')) {
       stackState.orderMode = savedOrder;
@@ -2137,6 +2135,14 @@
     }
     try { window.focus(); } catch (e) {}
     renderStackCard();
+
+    // 叠卡速览开启成功：广播事件通知侧边栏默认自动收起/关闭，为用户让出沉浸全屏操作视野
+    try {
+      chrome.runtime.sendMessage({ type: 'RN_STACK_OPENED', action: 'RN_STACK_OPENED' }, function () {
+        if (chrome.runtime.lastError) {}
+      });
+    } catch (e) {}
+
     return { ok: true, count: list.length };
   }
 
@@ -3440,15 +3446,6 @@
       '      <button class="rn-stack-close" id="rn-stack-close" type="button" title="关闭 (Esc)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>',
       '    </div>',
       '  </div>',
-      '  <div class="rn-stack-auto-row">',
-      '    <div class="rn-stack-opt">',
-      '      <span>操作后自动下一个</span>',
-      '      <label class="rn-stack-toggle" title="开启后，点击操作按钮将自动滑向下一篇">',
-      '        <input type="checkbox" id="rn-stack-auto-toggle"' + (stackState.autoAdvance ? ' checked' : '') + '>',
-      '        <span class="rn-stack-slider"></span>',
-      '      </label>',
-      '    </div>',
-      '  </div>',
       '  <div class="rn-stack-deck" id="rn-stack-deck">',
       '    <div class="rn-card-layer rn-layer-2" id="rn-layer-2"></div>',
       '    <div class="rn-card-layer rn-layer-1" id="rn-layer-1"></div>',
@@ -3510,7 +3507,6 @@
       deck: $('#rn-stack-deck', root),
       counter: $('#rn-stack-counter', root),
       close: $('#rn-stack-close', root),
-      autoToggle: $('#rn-stack-auto-toggle', root),
       orderBtns: root.querySelectorAll('.rn-stack-order-btn'),
       layer1: $('#rn-layer-1', root),
       layer2: $('#rn-layer-2', root),
@@ -3595,13 +3591,6 @@
       closeStackView();
     });
 
-    stackState.els.autoToggle.addEventListener('change', function () {
-      stackState.autoAdvance = !!this.checked;
-      try {
-        localStorage.setItem('rn:stack_auto_advance', String(stackState.autoAdvance));
-      } catch (e) {}
-    });
-
     const orderBtns = root.querySelectorAll('.rn-stack-order-btn');
     stackState.els.orderBtns = orderBtns;
     orderBtns.forEach(function (btn) {
@@ -3660,6 +3649,8 @@
       mOverlay.classList.remove('rn-open');
       if (!stackState.open) {
         if (state.els && state.els.host) {
+          state.els.host.style.width = '0';
+          state.els.host.style.height = '0';
           state.els.host.style.pointerEvents = 'none';
         }
       }
@@ -3683,6 +3674,8 @@
     if (!overlay) return;
 
     if (state.els && state.els.host) {
+      state.els.host.style.width = '100vw';
+      state.els.host.style.height = '100vh';
       state.els.host.style.pointerEvents = 'auto';
     }
 
@@ -4176,6 +4169,11 @@
     if (msg.type === 'RN_PREVIEW_NOTE') {
       const ok = previewNote(msg.noteId, msg.url);
       sendResponse({ ok: ok, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_PREVIEW_MILESTONE') {
+      showPageMilestoneModal(msg.milestone, msg.lifetime || 10);
+      sendResponse({ ok: true, state: fullPublicState() });
       return;
     }
   });
