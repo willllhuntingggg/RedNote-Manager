@@ -3051,7 +3051,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 恢复且始终呈现');
 });
 
-test('界面细节与控制状态交互演进：已读取计数还原、停止态即刻响应与关闭按钮居中优化', () => {
+test('界面细节与控制状态交互演进：统计行拆分精简、已读取移至模式行、已处理与失败移入日志、停止态即刻响应', () => {
   const fs = require('fs');
   const path = require('path');
   const rootDir = path.resolve(__dirname, '..');
@@ -3060,24 +3060,26 @@ test('界面细节与控制状态交互演进：已读取计数还原、停止�
   const cssContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.css'), 'utf8');
   const jsContent = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.js'), 'utf8');
 
-  // 1. 已读取计数还原在已勾选之前
-  const candIndex = htmlContent.indexOf('id="rn-s-cand"');
-  const selIndex = htmlContent.indexOf('id="rn-s-sel"');
-  assert.strictEqual(candIndex !== -1, true, '统计看板中已找回 #rn-s-cand 已读取计数');
-  assert.strictEqual(selIndex !== -1, true, '统计看板中包含 #rn-s-sel 已勾选计数');
-  assert.strictEqual(candIndex < selIndex, true, '已读取计数位于已勾选计数之前');
+  // 1. 原独立统计行彻底移除，已勾选计数从主面板中去除（由底部取消收藏按钮直接呈现篇数）
+  assert.strictEqual(htmlContent.includes('<div class="rn-stats">'), false, '主面板已彻底移除冗余的统计看板行');
+  assert.strictEqual(htmlContent.includes('id="rn-s-sel"'), false, '已勾选计数已从独立DOM中移除，避免与底部按钮重复');
 
-  // 2. 取消点赞按钮上方冗余红线进度条已移除
+  // 2. 已读取计数置于顶部模式行
+  assert.strictEqual(htmlContent.includes('id="rn-s-cand"'), true, '模式指示条包含 #rn-s-cand 已读取计数');
+  assert.strictEqual(htmlContent.includes('当前读取已收藏的笔记'), true, '模式指示条文案规范对齐「当前读取已收藏的笔记 N 条」');
+
+  // 3. 已处理与失败计数放置于操作日志区头部
+  assert.strictEqual(htmlContent.includes('id="rn-s-ok"'), true, '日志区包含 #rn-s-ok 已处理计数');
+  assert.strictEqual(htmlContent.includes('id="rn-s-fail"'), true, '日志区包含 #rn-s-fail 失败计数');
+
+  // 4. 取消点赞按钮上方冗余红线进度条已移除
   assert.strictEqual(htmlContent.includes('<div class="rn-progress"><i id="rn-bar"></i></div>'), false, '主按钮上方冗余红线进度条已移除');
 
-  // 3. 统计网格升级为4列
-  assert.strictEqual(cssContent.includes('grid-template-columns: repeat(4, 1fr)'), true, '统计面板网格配置为 4 列对齐');
-
-  // 4. 关闭按钮与图标居中
+  // 5. 关闭按钮与图标居中
   assert.strictEqual(cssContent.includes('display: inline-flex !important'), true, '关闭按钮设置强制 flex 居中');
   assert.strictEqual(cssContent.includes('display: inline-flex;\n  align-items: center;\n  justify-content: center;'), true, '通用图标按钮支持精准居中');
 
-  // 5. 停止态按钮醒目可视度与即时响应
+  // 6. 停止态按钮醒目可视度与即时响应
   assert.strictEqual(cssContent.includes('.rn-mode-scan-btn.rn-scanning'), true, '包含扫描/停止中高对比状态样式');
   assert.strictEqual(cssContent.includes('#dc2626'), true, '停止状态具备高饱和高对比警示红色');
   assert.strictEqual(jsContent.includes("scanBtn.textContent = '⏹ 停止'"), true, '点击扫描时具备 0ms 乐观即刻切换停止状态');

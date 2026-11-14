@@ -437,10 +437,17 @@ body {
 }
 
 .rn-mode-title {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-main);
   white-space: nowrap;
+}
+
+.rn-mode-title b,
+#rn-s-cand {
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0 1px;
 }
 
 .rn-mode-scan-btn {
@@ -574,36 +581,18 @@ body {
   display: none;
 }
 
-/* 统计卡片 */
+/* 统计看板（已精简并拆分至顶部模式横幅与底部日志区） */
 .rn-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  display: none;
 }
 
 .rn-stat {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 6px 4px;
-  text-align: center;
+  display: none;
 }
 
-.rn-stat b {
-  display: block;
-  font-size: 16px;
-  line-height: 1.25;
-  color: var(--text-main);
-  font-variant-numeric: tabular-nums;
-}
-
-.rn-stat b.rn-ok { color: var(--success); }
-.rn-stat b.rn-bad { color: var(--danger); }
-.rn-stat b.rn-acc { color: var(--stat-acc); }
-.rn-stat span {
-  font-size: 10px;
-  color: var(--text-muted);
-}
+b.rn-ok, .rn-ok { color: var(--success); }
+b.rn-bad, .rn-bad { color: var(--danger); }
+b.rn-acc, .rn-acc { color: var(--stat-acc); }
 
 /* 进度条 (已精简隐蔽) */
 .rn-progress {
@@ -1152,12 +1141,38 @@ body {
 }
 
 .rn-log-title {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.rn-log-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rn-log-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.rn-log-stat b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rn-log-sep {
+  opacity: 0.35;
+  font-size: 10px;
 }
 
 .rn-log-actions {

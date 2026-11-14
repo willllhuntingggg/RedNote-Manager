@@ -305,7 +305,12 @@ function renderDisconnected(message) {
 
 function executeRenderDisconnected(message) {
   lastState = null;
-  if ($('rn-s-cand')) $('rn-s-cand').textContent = '–';
+  const bannerTitle = $('rn-mode-title');
+  if (bannerTitle) {
+    bannerTitle.innerHTML = '当前读取已收藏的笔记 <b id="rn-s-cand">–</b> 条';
+  } else if ($('rn-s-cand')) {
+    $('rn-s-cand').textContent = '–';
+  }
   if ($('rn-s-sel')) $('rn-s-sel').textContent = '–';
   if ($('rn-s-ok')) $('rn-s-ok').textContent = '–';
   if ($('rn-s-fail')) $('rn-s-fail').textContent = '–';
@@ -383,6 +388,15 @@ function applyState(st) {
   // 顶部提示
   applyAlert(st);
 
+  // 候选与统计（已处理的笔记不进入候选与已读取计数）
+  const allCandidates = Array.isArray(st.candidates) ? st.candidates : [];
+  const processedSet = new Set((st.processed && st.processed[st.mode]) || []);
+  const processedOnPage = allCandidates.filter(function (n) { return processedSet.has(n.id); }).length;
+
+  const candList = getUnprocessedCandidates(st);
+  const candCount = candList.length;
+  const selCount = Array.isArray(st.selected) ? st.selected.length : (st.selectedCount || 0);
+
   // 模式状态指示条（跟随左侧小红书页面）
   const counts = st.cacheCounts || {};
   const uncollectNum = counts.uncollect !== undefined ? counts.uncollect : 0;
@@ -408,12 +422,12 @@ function applyState(st) {
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_NOTES;
     } else if (isUnlike) {
-      if (bannerTitle) bannerTitle.textContent = '当前模式：取消点赞';
+      if (bannerTitle) bannerTitle.innerHTML = '当前读取已点赞的笔记 <b id="rn-s-cand">' + candCount + '</b> 条';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_HEART;
     } else {
-      if (bannerTitle) bannerTitle.textContent = '当前模式：取消收藏';
+      if (bannerTitle) bannerTitle.innerHTML = '当前读取已收藏的笔记 <b id="rn-s-cand">' + candCount + '</b> 条';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_STAR;
@@ -436,23 +450,16 @@ function applyState(st) {
   const M = C && C.MODES ? C.MODES[st.mode] : null;
   if ($('rn-hint')) $('rn-hint').textContent = M ? M.tabLabel : '小红书主页';
 
-  // 统计看板（已处理的笔记不进入候选与计数）
-  const allCandidates = Array.isArray(st.candidates) ? st.candidates : [];
-  const processedSet = new Set((st.processed && st.processed[st.mode]) || []);
-  const processedOnPage = allCandidates.filter(function (n) { return processedSet.has(n.id); }).length;
-
-  const candList = getUnprocessedCandidates(st);
-  const candCount = candList.length;
-  const selCount = Array.isArray(st.selected) ? st.selected.length : (st.selectedCount || 0);
+  // 已读取提示信息 title
   if ($('rn-s-cand')) {
-    $('rn-s-cand').textContent = String(candCount);
     if (processedOnPage > 0 && !showProcessedNotes) {
       $('rn-s-cand').title = '待处理 ' + candCount + ' 篇（页面共读取 ' + allCandidates.length + ' 篇，已隐藏 ' + processedOnPage + ' 篇已处理）';
     } else {
       $('rn-s-cand').removeAttribute('title');
     }
   }
-  if ($('rn-s-sel')) $('rn-s-sel').textContent = String(selCount);
+
+  // 日志区：已处理与失败统计
   if ($('rn-s-ok')) $('rn-s-ok').textContent = String((st.stats && st.stats.ok) || processedOnPage);
   if ($('rn-s-fail')) $('rn-s-fail').textContent = String(st.stats ? st.stats.fail : 0);
 

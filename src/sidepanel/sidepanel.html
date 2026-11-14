@@ -32,27 +32,19 @@
     <div class="rn-body">
       <!-- 视图 1：主工作区视图 (默认展示) -->
       <div class="rn-view rn-view-main" id="rn-main-view">
-        <!-- 模式状态指示条（跟随左侧小红书页面） -->
+        <!-- 模式状态指示条（跟随左侧小红书页面，展示已读取计数与读取/停止按钮） -->
         <div class="rn-mode-banner" id="rn-mode-banner" title="侧边栏模式跟随左侧小红书页面当前激活的标签">
           <div class="rn-mode-info">
             <span class="rn-mode-icon" id="rn-mode-icon">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
             </span>
-            <span class="rn-mode-title" id="rn-mode-title">当前模式：取消收藏</span>
+            <span class="rn-mode-title" id="rn-mode-title">当前读取已收藏的笔记 <b id="rn-s-cand">0</b> 条</span>
           </div>
           <button class="rn-btn rn-mini rn-mode-scan-btn" id="rn-scan" type="button" title="读取当前页面列表（按住 Shift 点击可清空缓存全新读取）">读取列表</button>
         </div>
 
         <!-- 提示 / 警告 -->
         <div class="rn-alert" id="rn-alert" hidden></div>
-
-        <!-- 数据统计看板 -->
-        <div class="rn-stats">
-          <div class="rn-stat"><b id="rn-s-cand">0</b><span>已读取</span></div>
-          <div class="rn-stat"><b id="rn-s-sel" class="rn-acc">0</b><span>已勾选</span></div>
-          <div class="rn-stat"><b id="rn-s-ok" class="rn-ok">0</b><span>已处理</span></div>
-          <div class="rn-stat"><b id="rn-s-fail" class="rn-bad">0</b><span>失败</span></div>
-        </div>
 
         <!-- 搜索筛选 -->
         <div class="rn-search">
@@ -100,6 +92,14 @@
             </button>
           </div>
           <div class="rn-log-collapse" id="rn-log-collapse">
+            <div class="rn-log-header">
+              <span class="rn-log-title">操作日志</span>
+              <div class="rn-log-stats">
+                <span class="rn-log-stat" title="已成功处理的笔记篇数">已处理 <b id="rn-s-ok" class="rn-ok">0</b></span>
+                <span class="rn-log-sep">·</span>
+                <span class="rn-log-stat" title="处理失败的笔记篇数">失败 <b id="rn-s-fail" class="rn-bad">0</b></span>
+              </div>
+            </div>
             <div class="rn-log" id="rn-log"></div>
           </div>
         </div>
