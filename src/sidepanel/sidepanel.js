@@ -702,7 +702,7 @@ function renderList(candidates, visible, st, query) {
       '<div class="rn-item-main">' +
         '<div class="rn-item-row">' +
           '<span class="rn-nm">' + esc(titleOf(n)) + '</span>' +
-          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="查看原文（新标签页打开）">' +
+          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="查看原文（悬浮小窗口打开）">' +
             '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
           '</a>' +
         '</div>' +
@@ -1372,14 +1372,8 @@ function bindEvents() {
       const itemEl = link.closest('.rn-item');
       const noteId = itemEl ? itemEl.dataset.id : '';
 
-      // 方案 B：统一在新标签页打开（保证个人主页与叠卡状态绝对不受干扰）
-      if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
-        if (chrome.tabs && typeof chrome.tabs.create === 'function') {
-          chrome.tabs.create({ url: targetUrl });
-        } else {
-          window.open(targetUrl, '_blank', 'noopener');
-        }
-      }
+      // 方案 B+：统一在原窗口上方以独立悬浮小弹窗打开（不开浏览器新页签，绝不破坏主页）
+      openNotePopup(targetUrl);
       return;
     }
     const item = ev.target && ev.target.closest ? ev.target.closest('.rn-item') : null;
@@ -1390,19 +1384,23 @@ function bindEvents() {
     requestState();
   });
 
-  // 双击列表项：快捷在新标签页打开预览
+  function openNotePopup(targetUrl) {
+    if (!targetUrl || targetUrl === '#' || targetUrl.startsWith('javascript:')) return;
+    const width = 540;
+    const height = Math.min(880, Math.round((window.screen.availHeight || 800) * 0.9));
+    const left = Math.max(0, Math.round(((window.screen.availWidth || 1200) - width) / 2));
+    const top = Math.max(0, Math.round(((window.screen.availHeight || 800) - height) / 2));
+    const features = 'popup=yes,width=' + width + ',height=' + height + ',top=' + top + ',left=' + left + ',scrollbars=yes,resizable=yes';
+    window.open(targetUrl, 'rn_preview_popup', features);
+  }
+
+  // 双击列表项：快捷在原窗口上方独立小弹窗打开预览
   listEl.addEventListener('dblclick', function (ev) {
     const item = ev.target && ev.target.closest ? ev.target.closest('.rn-item') : null;
     if (!item || !item.dataset.id) return;
     const link = item.querySelector('.rn-item-link');
     const targetUrl = link ? (link.getAttribute('href') || link.href) : '';
-    if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
-      if (chrome.tabs && typeof chrome.tabs.create === 'function') {
-        chrome.tabs.create({ url: targetUrl });
-      } else {
-        window.open(targetUrl, '_blank', 'noopener');
-      }
-    }
+    openNotePopup(targetUrl);
   });
   }
 

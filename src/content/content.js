@@ -3844,31 +3844,11 @@
     return null;
   }
 
-  function suspendStackViewAndPreview(noteId, noteUrl) {
-    if (!noteId) return;
-
-    // 方案 B：统一采用 window.open 新标签页安全打开
-    // 叠卡速览保持当前进度绝对不中断，小红书个人主页绝不触发任何路由跳转或跳回首页！
-    let token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
-    if (!token) {
-      const el = findNoteCardElement(noteId);
-      if (el) {
-        token = C.extractXsecToken(el.getAttribute('href') || el.href || '');
-        if (token && state.xsecTokens) state.xsecTokens[noteId] = token;
-      }
-    }
-    const finalUrl = C.buildNoteUrl(noteId, token);
-    if (finalUrl) {
-      showToast('已在新标签页为您打开笔记详情', 'info');
-      window.open(finalUrl, '_blank', 'noopener');
-    }
-  }
-
   /**
-   * 预览笔记（方案 B：统一 window.open 规范化新标签页打开）
-   * 彻底避免触发小红书整页重载、SPA 路由冲突或跳往 /explore 发现页！
+   * 预览笔记（方案 B+：以独立原生悬浮小窗口 popup 在原窗口上方打开，不开新标签页）
+   * 彻底避免触发小红书整页重载、标签栏拥挤混乱或跳往 /explore 发现页！
    */
-  function previewNote(noteId, noteUrl, fromStack) {
+  function openNoteInPopup(noteId, noteUrl) {
     if (!noteId) return false;
 
     let token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
@@ -3881,11 +3861,27 @@
     }
     const finalUrl = C.buildNoteUrl(noteId, token);
     if (finalUrl) {
-      showToast('已在新标签页为您打开笔记详情', 'info');
-      window.open(finalUrl, '_blank', 'noopener');
+      // 动态计算居中悬浮坐标与尺寸，呈现独立精美的小红书轻量查看窗口
+      const width = 540;
+      const height = Math.min(880, Math.round((window.screen.availHeight || 800) * 0.9));
+      const left = Math.max(0, Math.round(((window.screen.availWidth || 1200) - width) / 2));
+      const top = Math.max(0, Math.round(((window.screen.availHeight || 800) - height) / 2));
+      const features = 'popup=yes,width=' + width + ',height=' + height + ',top=' + top + ',left=' + left + ',scrollbars=yes,resizable=yes';
+      
+      // 使用固定窗口名称 'rn_preview_popup'，多次点击时会在同一个浮动窗口内平滑切换展示，绝不乱堆叠窗口！
+      window.open(finalUrl, 'rn_preview_popup', features);
       return true;
     }
     return false;
+  }
+
+  function suspendStackViewAndPreview(noteId, noteUrl) {
+    if (!noteId) return;
+    openNoteInPopup(noteId, noteUrl);
+  }
+
+  function previewNote(noteId, noteUrl, fromStack) {
+    return openNoteInPopup(noteId, noteUrl);
   }
 
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
