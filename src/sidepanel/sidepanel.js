@@ -306,8 +306,7 @@ function renderDisconnected(message) {
 const SCAN_BTN_TITLE_IDLE =
   '批量管理前需先读取页面数据：\n' +
   '• 点击【读取】：自动向下滚动页面并读取更多笔记\n' +
-  '• 手动浏览：在小红书页面自主下滑浏览，笔记也会实时自动载入\n' +
-  '（按住 Shift 点击可清空缓存全新读取）';
+  '• 手动浏览：在小红书页面自主下滑浏览，笔记也会实时自动载入';
 
 const SCAN_BTN_TITLE_BUSY = '点击停止当前自动读取/执行操作';
 

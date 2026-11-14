@@ -3070,6 +3070,7 @@ test('界面细节与控制状态交互演进：统计行拆分精简、已读�
   assert.strictEqual(htmlContent.includes('已读取'), true, '顶栏标题规范对齐「已读取 N 条收藏」');
   assert.strictEqual(jsContent.includes('批量管理前需先读取页面数据'), true, '读取按钮包含解释新手需先读取数据的提示');
   assert.strictEqual(jsContent.includes('手动浏览'), true, '读取按钮包含手动在小红书页面滚动浏览加载的提示');
+  assert.strictEqual(jsContent.includes('全新读取'), false, '提示文案已去除冗余的高级Shift快捷操作说明');
   assert.strictEqual(cssContent.includes('font-size: 15px'), true, '标题文字具备标题级字号 (15px)');
   assert.strictEqual(cssContent.includes('font-weight: 700'), true, '标题文字具备加粗权重 (700)');
 
