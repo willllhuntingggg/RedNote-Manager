@@ -3117,9 +3117,9 @@ test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫�
   // 2. 验证挂起与无感唤醒进度持久化逻辑
   assert.strictEqual(contentJs.includes('let suspendedProgress = { index: -1, noteId: null };'), true, '具备独立的进度暂存容器');
   assert.strictEqual(contentJs.includes("suspendedProgress.noteId"), true, '按 noteId 优先精准匹配恢复卡片下标');
-  assert.strictEqual(contentJs.includes("!stackSuspended && !isModalOverlay && state.mounted"), true, 'tick 巡检中严格免疫原生弹窗，绝不误触发 unmount 销毁容器');
-  assert.strictEqual(contentJs.includes("if (stackSuspended) {"), true, '具备挂起状态检查');
-  assert.strictEqual(contentJs.includes("resumeStackView();\n        return;"), true, 'popstate 路由回滚时无感恢复叠卡并立即退出，坚决不重置卡片');
+  assert.strictEqual(contentJs.includes("!stackSuspended && !activeModalPreview && !isModalOverlay && state.mounted"), true, 'tick 巡检中严格免疫原生弹窗与全局轻预览，绝不误触发 unmount 销毁容器');
+  assert.strictEqual(contentJs.includes("if (activeModalPreview || stackSuspended) {"), true, '具备挂起与轻预览拦截状态检查');
+  assert.strictEqual(contentJs.includes("resumeStackView();"), true, '路由回滚时无感恢复叠卡并立即退出，坚决不重置卡片');
 
   // 3. 模拟叠卡挂起与唤醒全生命周期测试
   const mockStackState = {
@@ -3200,6 +3200,11 @@ test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫�
   // 5. 验证小红书关闭原生详情弹窗时跳往首页 /explore 的纠偏防御机制
   assert.strictEqual(contentJs.includes("let originProfileUrl = '';"), true, '记录挂起前用户所在的个人主页完整 URL');
   assert.strictEqual(contentJs.includes("location.replace(originProfileUrl)"), true, '当路由误跳首页时立即纠偏回个人主页');
+
+  // 6. 验证远端/视口外未加载卡片预览时采用 profile 嵌套单页路由，严禁触发 /explore 路由跳出
+  assert.strictEqual(contentJs.includes("'/user/profile/' + profileUserId + '/' + noteId"), true, '视口外未加载卡片构建 profile 内部嵌套路由');
+  assert.strictEqual(contentJs.includes("setupPreviewModalWatcher"), true, '启动原生弹窗关闭守卫与监听');
+  assert.strictEqual(contentJs.includes("activeModalPreview || stackSuspended"), true, '右侧列表与叠卡预览统一享受防跳首页保护与生命周期免疫');
 });
 
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {
