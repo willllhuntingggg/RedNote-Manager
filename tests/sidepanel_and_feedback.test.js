@@ -3118,7 +3118,8 @@ test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫�
   assert.strictEqual(contentJs.includes('let suspendedProgress = { index: -1, noteId: null };'), true, '具备独立的进度暂存容器');
   assert.strictEqual(contentJs.includes("suspendedProgress.noteId"), true, '按 noteId 优先精准匹配恢复卡片下标');
   assert.strictEqual(contentJs.includes("!stackSuspended && !isModalOverlay && state.mounted"), true, 'tick 巡检中严格免疫原生弹窗，绝不误触发 unmount 销毁容器');
-  assert.strictEqual(contentJs.includes("if (stackSuspended) {\n        // 如果是在叠卡挂起预览期间发生的 URL 回滚"), true, 'popstate 路由回滚时无感恢复叠卡并立即退出，坚决不重置卡片');
+  assert.strictEqual(contentJs.includes("if (stackSuspended) {"), true, '具备挂起状态检查');
+  assert.strictEqual(contentJs.includes("resumeStackView();\n        return;"), true, 'popstate 路由回滚时无感恢复叠卡并立即退出，坚决不重置卡片');
 
   // 3. 模拟叠卡挂起与唤醒全生命周期测试
   const mockStackState = {
@@ -3188,6 +3189,17 @@ test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫�
   assert.strictEqual(mockHost.style.pointerEvents, 'auto', '宿主容器恢复全屏捕获');
   assert.strictEqual(mockOverlay.classList.has('rn-open'), true, '遮罩恢复呈现');
   assert.strictEqual(mockOverlay.classList.has('rn-stack-suspended'), false, '挂起标记已清除');
+
+  // 4. 验证叠卡无需额外「查看原文」按钮，直接点击卡片封面或标题预览
+  const styleJs = fs.readFileSync(path.join(rootDir, 'src/content/style.js'), 'utf8');
+  assert.strictEqual(contentJs.includes('id="rn-card-open-btn"'), false, '叠卡卡片右上角已彻底移除冗余的查看原文按钮');
+  assert.strictEqual(contentJs.includes("stackState.els.coverBox.addEventListener('click', handleStackPreview)"), true, '卡片封面已绑定即时预览事件');
+  assert.strictEqual(contentJs.includes("stackState.els.title.addEventListener('click', handleStackPreview)"), true, '卡片标题已绑定即时预览事件');
+  assert.strictEqual(styleJs.includes('.rn-card-cover-box:hover .rn-card-cover-img'), true, '卡片封面具备悬停缩放微交互');
+
+  // 5. 验证小红书关闭原生详情弹窗时跳往首页 /explore 的纠偏防御机制
+  assert.strictEqual(contentJs.includes("let originProfileUrl = '';"), true, '记录挂起前用户所在的个人主页完整 URL');
+  assert.strictEqual(contentJs.includes("location.replace(originProfileUrl)"), true, '当路由误跳首页时立即纠偏回个人主页');
 });
 
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {

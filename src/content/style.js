@@ -566,12 +566,16 @@ globalThis.RNStyle = `
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    cursor: pointer !important;
   }
   .rn-card-cover-img {
     width: 100% !important;
     height: 100% !important;
     object-fit: cover !important;
-    transition: transform 0.3s ease !important;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  }
+  .rn-card-cover-box:hover .rn-card-cover-img {
+    transform: scale(1.035) !important;
   }
   .rn-card-cover-empty {
     color: #666677 !important;
@@ -598,38 +602,6 @@ globalThis.RNStyle = `
     background: rgba(74, 222, 128, 0.9) !important;
     border-color: #4ade80 !important;
     color: #0d2e14 !important;
-  }
-
-  /* 查看原文按钮（右上角） */
-  .rn-card-open-btn {
-    position: absolute !important;
-    top: 12px !important;
-    right: 12px !important;
-    padding: 4px 11px !important;
-    border-radius: 12px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    color: #ffffff !important;
-    background: rgba(22, 22, 28, 0.85) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.22) !important;
-    text-decoration: none !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 4px !important;
-    z-index: 3 !important;
-    transition: all 0.18s ease !important;
-    user-select: none !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
-  }
-  .rn-card-open-btn:hover {
-    background: rgba(255, 46, 77, 0.9) !important;
-    border-color: #ff2e4d !important;
-    color: #ffffff !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 14px rgba(255, 46, 77, 0.4) !important;
   }
 
   /* 卡片信息区 */

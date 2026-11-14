@@ -2249,7 +2249,7 @@
       stackState.els.empty.style.display = 'block';
       stackState.els.status.textContent = '已无待处理笔记';
       stackState.els.status.classList.remove('rn-pill-done');
-      if (stackState.els.btnOpen) stackState.els.btnOpen.style.display = 'none';
+      if (stackState.els.coverBox) stackState.els.coverBox.removeAttribute('title');
 
       let hintReason = '';
       if (stackState.filter && stackState.filter.tag && stackState.filter.tag !== 'all') {
@@ -2317,23 +2317,23 @@
       stackState.els.empty.style.display = 'block';
     }
 
-    // 更新查看原文链接按钮
+    // 更新封面与标题的即时预览提示
     const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
     const noteUrl = C.buildNoteUrl(note.url || note.id, token);
-    if (stackState.els.btnOpen) {
-      if (noteUrl) {
-        stackState.els.btnOpen.href = noteUrl;
-        stackState.els.btnOpen.title = '即时预览（呼出原生详情弹窗；按住 Cmd/Ctrl 在新标签页打开）';
-        stackState.els.btnOpen.style.display = 'inline-flex';
+    const previewTip = noteUrl ? '点击直接预览原生笔记（按住 Cmd/Ctrl 在新标签页打开）' : '';
+
+    if (stackState.els.coverBox) {
+      if (previewTip) {
+        stackState.els.coverBox.title = previewTip;
       } else {
-        stackState.els.btnOpen.style.display = 'none';
+        stackState.els.coverBox.removeAttribute('title');
       }
     }
 
     // 更新文本信息
     stackState.els.title.textContent = note.title || '未命名笔记';
-    if (noteUrl) {
-      stackState.els.title.title = '即时预览（呼出原生详情弹窗；按住 Cmd/Ctrl 在新标签页打开）';
+    if (previewTip) {
+      stackState.els.title.title = previewTip;
     } else {
       stackState.els.title.removeAttribute('title');
     }
@@ -3386,11 +3386,10 @@
       '    <div class="rn-card-layer rn-layer-2" id="rn-layer-2"></div>',
       '    <div class="rn-card-layer rn-layer-1" id="rn-layer-1"></div>',
       '    <div class="rn-card-main" id="rn-card-main">',
-      '      <div class="rn-card-cover-box">',
+      '      <div class="rn-card-cover-box" id="rn-card-cover-box" title="点击直接预览原生笔记（按住 Cmd/Ctrl 在新标签页打开）">',
       '        <img class="rn-card-cover-img" id="rn-card-img" alt="封面" style="display:none;" />',
       '        <div class="rn-card-cover-empty" id="rn-card-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>',
       '        <span class="rn-card-status-pill" id="rn-card-status">待处理</span>',
-      '        <a class="rn-card-open-btn" id="rn-card-open-btn" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">查看原文 ↗</a>',
       '      </div>',
       '      <div class="rn-card-info-box">',
       '        <div class="rn-card-title" id="rn-card-title"></div>',
@@ -3462,7 +3461,7 @@
       btnCollect: $('#rn-stack-action', root),
       btnUncollect: $('#rn-stack-action', root),
       btnUnlike: $('#rn-stack-action', root),
-      btnOpen: $('#rn-card-open-btn', root),
+      coverBox: $('#rn-card-cover-box', root),
       btnUndo: $('#rn-stack-undo', root),
     };
 
@@ -3481,14 +3480,12 @@
       }
     }
 
-    const openBtn = $('#rn-card-open-btn', root);
-    if (openBtn) {
-      openBtn.addEventListener('click', handleStackPreview);
+    if (stackState.els.coverBox) {
+      stackState.els.coverBox.addEventListener('click', handleStackPreview);
     }
 
-    const titleEl = $('#rn-card-title', root);
-    if (titleEl) {
-      titleEl.addEventListener('click', handleStackPreview);
+    if (stackState.els.title) {
+      stackState.els.title.addEventListener('click', handleStackPreview);
     }
 
     $('#rn-bar-clear', root).addEventListener('click', function (ev) {
@@ -3679,6 +3676,7 @@
   let resumeObserver = null;
   let resumeTimer = null;
   let suspendedProgress = { index: -1, noteId: null };
+  let originProfileUrl = '';
 
   function resumeStackView() {
     if (!stackSuspended) return;
@@ -3734,6 +3732,10 @@
   function suspendStackViewAndPreview(noteId, noteUrl) {
     if (!noteId) return;
 
+    if (PROFILE_RE.test(location.pathname)) {
+      originProfileUrl = location.href;
+    }
+
     stackSuspended = true;
     suspendedProgress = {
       index: stackState.index,
@@ -3771,8 +3773,29 @@
 
     let modalSeen = false;
 
+    function attachModalGuards() {
+      // 捕获小红书弹窗关闭按钮和遮罩背景点击
+      const closeEls = document.querySelectorAll('.close-circle, .close, [class*="close-circle"], [class*="close-box"], [class*="close-icon"], [class*="closeBtn"], [class*="close-btn"], [aria-label*="关闭"], .note-detail-mask');
+      for (let i = 0; i < closeEls.length; i++) {
+        const el = closeEls[i];
+        if (el && !el._rnCloseGuard) {
+          el._rnCloseGuard = true;
+          el.addEventListener('click', function () {
+            // 用户点击关闭按钮，如小红书单页路由错误跳往首页，立即由 popstate / onUrlChange 纠偏回个人主页
+            setTimeout(function () {
+              const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+              if (isHomeExplore && originProfileUrl) {
+                location.replace(originProfileUrl);
+              }
+            }, 30);
+          }, true);
+        }
+      }
+    }
+
     function checkDetailClosed() {
       if (!stackSuspended) return true;
+      attachModalGuards();
       const isExploring = isModalOverlayRoute();
       const modalEl = document.querySelector('.note-detail-mask, [class*="note-detail-mask"], [class*="noteDetail"], [class*="note-container"]');
       if (isExploring || modalEl) {
@@ -3781,6 +3804,11 @@
       }
       // 如果曾经检测到原生弹窗出现过，或者经过轮询确认弹窗和路由均已消失，则无感恢复叠卡
       if (modalSeen) {
+        const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+        if (isHomeExplore && originProfileUrl) {
+          location.replace(originProfileUrl);
+          return true;
+        }
         resumeStackView();
         return true;
       }
@@ -3860,18 +3888,24 @@
       } catch (e) {}
 
       // 派发全套鼠标事件以确保能被 Vue / React 等事件委托及原生监听捕获
+      const cardContainer = (targetEl.closest && targetEl.closest('section, article, [class*="note-item"], [class*="card"]')) || targetEl.parentElement;
+      const targets = [targetEl];
+      if (cardContainer && cardContainer !== targetEl) targets.push(cardContainer);
+
       const rect = targetEl.getBoundingClientRect();
       const clientX = rect.left + rect.width / 2;
       const clientY = rect.top + rect.height / 2;
-      ['mousedown', 'mouseup', 'click'].forEach(function (eventType) {
-        const evt = new MouseEvent(eventType, {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          clientX: clientX,
-          clientY: clientY,
+      targets.forEach(function (el) {
+        ['mousedown', 'mouseup', 'click'].forEach(function (eventType) {
+          const evt = new MouseEvent(eventType, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: clientX,
+            clientY: clientY,
+          });
+          el.dispatchEvent(evt);
         });
-        targetEl.dispatchEvent(evt);
       });
       if (typeof targetEl.click === 'function') {
         targetEl.click();
@@ -4060,6 +4094,12 @@
       lastKnownUrl = location.href;
 
       if (stackSuspended) {
+        const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+        if (isHomeExplore && originProfileUrl) {
+          // 彻底阻断关闭笔记后小红书单页路由误跳首页的异常行为，立即纠偏回个人主页
+          location.replace(originProfileUrl);
+          return;
+        }
         // 如果是在叠卡挂起预览期间发生的 URL 回滚（例如从 /explore/<id> 返回到 /user/profile），
         // 立即触发 resumeStackView 并退出，坚决不重置卡片缓存！
         resumeStackView();
@@ -4095,6 +4135,13 @@
   }
 
   function tick() {
+    if (stackSuspended && originProfileUrl) {
+      const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+      if (isHomeExplore) {
+        location.replace(originProfileUrl);
+        return;
+      }
+    }
     const isModalOverlay = isModalOverlayRoute();
     const onProfile = PROFILE_RE.test(location.pathname);
     if (onProfile && !state.mounted) {
