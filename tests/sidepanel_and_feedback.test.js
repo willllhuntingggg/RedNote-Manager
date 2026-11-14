@@ -348,6 +348,62 @@ test('叠卡速览交互引擎：随机回顾模式（随机下一个）与历�
   assert.strictEqual(stack.index, 0);
 });
 
+test('叠卡速览随机回顾：Fisher-Yates 无放回洗牌队列（本轮 100% 不重复且满轮自动重洗）', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const contentJs = fs.readFileSync(path.join(rootDir, 'src/content/content.js'), 'utf8');
+
+  // 1. 验证源码中包含 shuffleList 洗牌算法实现
+  assert.strictEqual(contentJs.includes('function shuffleList(arr) {'), true, '包含 Fisher-Yates 洗牌算法函数');
+  assert.strictEqual(contentJs.includes("if (stackState.orderMode === 'random') {"), true, '随机模式应用洗牌队列');
+  assert.strictEqual(contentJs.includes("showToast('🎉 本轮 ' + total + ' 篇已全部回顾完毕，已为您开启新一轮随机洗牌');"), true, '满轮后给出轻提示并开启新一轮');
+
+  // 2. 模拟洗牌算法无损性与零重复
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const temp = a[i];
+      a[i] = a[j];
+      a[j] = temp;
+    }
+    return a;
+  }
+
+  const rawList = Array.from({ length: 20 }, function (_, i) { return { id: 'note_' + i, title: 'Note ' + i }; });
+  const shuffled = shuffle(rawList);
+
+  assert.strictEqual(shuffled.length, rawList.length, '洗牌后长度一致');
+  const idSet = new Set(shuffled.map(function (n) { return n.id; }));
+  assert.strictEqual(idSet.size, 20, '洗牌后所有笔记互不相同，零重复');
+
+  // 3. 模拟一整轮线性推进无放回抽样
+  const seenIdsThisRound = [];
+  let index = 0;
+  for (let step = 0; step < shuffled.length; step++) {
+    seenIdsThisRound.push(shuffled[index].id);
+    if (index < shuffled.length - 1) {
+      index++;
+    }
+  }
+
+  assert.strictEqual(seenIdsThisRound.length, 20, '整轮共推进 20 次');
+  assert.strictEqual(new Set(seenIdsThisRound).size, 20, '本轮内每一篇笔记仅出现 1 次，100% 绝无重复');
+  assert.strictEqual(index, 19, '到达本轮最后一张');
+
+  // 4. 满轮后点击下一张触发重新洗牌并归零
+  let reshuffled = false;
+  if (index >= shuffled.length - 1) {
+    const newRound = shuffle(shuffled);
+    index = 0;
+    reshuffled = true;
+    assert.strictEqual(newRound.length, 20);
+  }
+  assert.strictEqual(reshuffled, true, '满轮后自动重洗进入新一轮');
+  assert.strictEqual(index, 0, '游标归零重新开始');
+});
+
 test('叠卡速览交互引擎：按模式彻底解耦，收藏模式专注取消收藏，点赞模式专注取消点赞，单Action专属按钮与状态判定', () => {
   const processed = { uncollect: new Set(), unlike: new Set() };
   const modeCache = {

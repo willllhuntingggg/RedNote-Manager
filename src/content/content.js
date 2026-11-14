@@ -1963,6 +1963,21 @@
   } catch (e) {}
 
   /**
+   * 洗牌算法（Fisher-Yates Shuffle）：生成随机乱序且绝不重复的独立序列
+   */
+  function shuffleList(arr) {
+    if (!Array.isArray(arr) || arr.length <= 1) return (arr || []).slice();
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const temp = a[i];
+      a[i] = a[j];
+      a[j] = temp;
+    }
+    return a;
+  }
+
+  /**
    * 计算当前叠卡卡组的数据源（严格与右侧侧边栏展示的数据源对齐）
    */
   function getStackFilteredList() {
@@ -1997,9 +2012,12 @@
       return !isProcessed(curMode, n.id);
     });
 
-    // 3. 应用排序方式：正序 (asc) 翻转为从旧到新；倒序 (desc) 保持最新优先；随机 (random) 保持原样由 nextStackCard 随机抽取
+    // 3. 应用排序方式：正序 (asc) 翻转为从旧到新；倒序 (desc) 保持最新优先；随机 (random) 无放回随机洗牌
     if (stackState.orderMode === 'asc') {
       return result.slice().reverse();
+    }
+    if (stackState.orderMode === 'random') {
+      return shuffleList(result);
     }
     return result;
   }
@@ -2022,9 +2040,10 @@
     const currentNote = stackState.list[stackState.index];
     const reordered = getStackFilteredList();
     stackState.list = reordered;
+    stackState.history = [];
 
     let targetIdx = 0;
-    if (currentNote && currentNote.id) {
+    if (currentNote && currentNote.id && newMode !== 'random') {
       for (let i = 0; i < reordered.length; i++) {
         if (reordered[i].id === currentNote.id) {
           targetIdx = i;
@@ -2034,7 +2053,7 @@
     }
     stackState.index = targetIdx;
     renderStackCard();
-    showToast(newMode === 'asc' ? '已切换为：按时间正序（从旧到新）' : (newMode === 'random' ? '已切换为：随机回顾模式' : '已切换为：按时间倒序（最新优先）'));
+    showToast(newMode === 'asc' ? '已切换为：按时间正序（从旧到新）' : (newMode === 'random' ? '已切换为：无重复随机洗牌回顾' : '已切换为：按时间倒序（最新优先）'));
   }
 
   function openStackView(opts) {
@@ -2092,11 +2111,7 @@
     stackState.working = false;
     stackState.sessionProcessed = 0;
 
-    if (stackState.randomMode && list.length > 1) {
-      stackState.index = Math.floor(Math.random() * list.length);
-    } else {
-      stackState.index = 0;
-    }
+    stackState.index = 0;
 
     // 展开宿主容器至全视口，保证模态框与阴影遮罩可完整呈现并捕获交互
     if (state.els && state.els.host) {
@@ -2380,8 +2395,9 @@
     if (stackState.randomMode) {
       stackState.els.btnPrev.disabled = (!stackState.history || stackState.history.length === 0) && idx <= 0;
       stackState.els.btnNext.disabled = total <= 1;
-      stackState.els.btnNext.innerHTML = '随机下一个 <span>→</span>';
-      stackState.els.btnNext.title = '随机下一张 (快捷键: →)';
+      const isRoundEnd = idx >= total - 1 && total > 1;
+      stackState.els.btnNext.innerHTML = (isRoundEnd ? '新一轮洗牌' : '随机下一个') + ' <span>→</span>';
+      stackState.els.btnNext.title = isRoundEnd ? '本轮已全部回顾完成，点击开启新一轮随机洗牌' : '下一个随机回顾 (快捷键: →)';
     } else {
       stackState.els.btnPrev.disabled = idx <= 0;
       stackState.els.btnNext.disabled = idx >= total - 1;
@@ -2491,15 +2507,14 @@
       if (stackState.history.length > 100) stackState.history.shift();
     }
 
-    // 2. 计算下一张索引
-    if (stackState.randomMode) {
-      let rand;
-      do {
-        rand = Math.floor(Math.random() * total);
-      } while (rand === stackState.index && total > 1);
-      stackState.index = rand;
-    } else {
+    // 2. 计算下一张索引（随机回顾模式采用无放回洗牌队列，本轮绝不重复）
+    if (stackState.index < total - 1) {
       stackState.index++;
+    } else if (stackState.randomMode && total > 1) {
+      // 本轮已全部看完了：重新洗牌开启新一轮，保证下轮也不重复
+      stackState.list = shuffleList(stackState.list);
+      stackState.index = 0;
+      showToast('🎉 本轮 ' + total + ' 篇已全部回顾完毕，已为您开启新一轮随机洗牌');
     }
     renderStackCard();
 
@@ -2594,10 +2609,14 @@
     const newTotal = stackState.list.length;
     if (newTotal === 0) {
       stackState.index = 0;
-    } else if (stackState.randomMode) {
-      stackState.index = Math.floor(Math.random() * newTotal);
     } else if (stackState.index >= newTotal) {
-      stackState.index = newTotal - 1;
+      if (stackState.randomMode && newTotal > 1) {
+        stackState.list = shuffleList(stackState.list);
+        stackState.index = 0;
+        showToast('🎉 本轮已全部回顾完毕，已为您开启新一轮随机洗牌');
+      } else {
+        stackState.index = newTotal - 1;
+      }
     }
 
     renderStackCard();
