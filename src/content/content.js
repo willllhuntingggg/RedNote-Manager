@@ -3775,6 +3775,10 @@
       // 如果曾经检测到原生弹窗出现过，或者经过轮询确认弹窗和路由均已消失，则无感恢复主页与叠卡
       if (modalSeen) {
         activeModalPreview = false;
+        try {
+          sessionStorage.removeItem('rn_preview_origin');
+          sessionStorage.removeItem('rn_preview_time');
+        } catch (e) {}
         const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
         if (isHomeExplore && originProfileUrl) {
           location.replace(originProfileUrl);
@@ -3813,11 +3817,54 @@
     }, 250);
   }
 
+  /**
+   * 查找小红书页面 DOM 中真实挂载的笔记卡片节点（排除插件自身 UI）
+   */
+  function findNoteCardElement(noteId) {
+    if (!noteId) return null;
+    const candidates = document.querySelectorAll(
+      'section.note-item a[href*="' + noteId + '"], [class*="note-item"] a[href*="' + noteId + '"], .feeds-container a[href*="' + noteId + '"], #userPageContainer a[href*="' + noteId + '"]'
+    );
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      if (el.closest('#rn-sidepanel, #rn-stack-overlay, #rn-undo-container, .rn-panel')) {
+        continue;
+      }
+      const href = el.getAttribute('href') || el.href || '';
+      if (C.extractNoteId(href) === noteId) {
+        if (el.classList && (el.classList.contains('cover') || el.classList.contains('title'))) {
+          return el;
+        }
+        return el;
+      }
+    }
+    return null;
+  }
+
   function suspendStackViewAndPreview(noteId, noteUrl) {
     if (!noteId) return;
 
+    // 1. 检查页面 DOM 中是否已挂载该笔记卡片
+    const targetEl = findNoteCardElement(noteId);
+    if (!targetEl) {
+      // 笔记不在当前 DOM 中（未向下滚动加载或已被小红书虚拟列表回收）
+      // 严禁在此派发原生超链接跳转，否则小红书会整页刷新为单笔记探索流，并在关闭时跳到 /explore 首页！
+      // 直接在新标签页安全打开，叠卡速览保持当前进度完全不中断
+      showToast('该笔记尚未滚动加载，已在新标签页为您打开', 'info');
+      const token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
+      const finalUrl = noteUrl || C.buildNoteUrl(noteId, token);
+      if (finalUrl) {
+        window.open(finalUrl, '_blank', 'noopener');
+      }
+      return;
+    }
+
     if (PROFILE_RE.test(location.pathname)) {
       originProfileUrl = location.href;
+      try {
+        sessionStorage.setItem('rn_preview_origin', location.href);
+        sessionStorage.setItem('rn_preview_time', String(Date.now()));
+      } catch (e) {}
     }
 
     stackSuspended = true;
@@ -3851,16 +3898,20 @@
 
   /**
    * 呼出小红书原生详情弹窗（方案 A：无感轻预览）
-   * 优先匹配当前页面 DOM 中已挂载的卡片并模拟真实用户点击，
-   * 若卡片已被虚拟列表回收或尚未滚动加载，则使用当前个人主页嵌套路由派发点击，
+   * 优先匹配当前页面 DOM 中已挂载的卡片并模拟真实用户点击呼起弹窗浮层；
+   * 若卡片尚未滚动加载或已被虚拟列表回收，则安全降级至新标签页打开，
    * 彻底避免触发小红书整页重载或路由跳往 /explore 发现页！
    */
   function previewNote(noteId, noteUrl, fromStack) {
     if (!noteId) return false;
 
-    // 无论从叠卡还是右侧列表触发预览，统一记录发起预览时的个人主页完整 URL
+    // 记录发起预览时的个人主页完整 URL，并持久化到 sessionStorage
     if (PROFILE_RE.test(location.pathname)) {
       originProfileUrl = location.href;
+      try {
+        sessionStorage.setItem('rn_preview_origin', location.href);
+        sessionStorage.setItem('rn_preview_time', String(Date.now()));
+      } catch (e) {}
     }
 
     // 若当前叠卡弹窗处于打开状态且不是挂起模式，先平滑收起叠卡，避免弹窗重叠
@@ -3868,109 +3919,48 @@
       closeStackView();
     }
 
-    let success = false;
-
-    // 1. 在当前页面的 DOM 中寻找该 noteId 对应的卡片或链接
-    const links = $$('a[href*="' + noteId + '"]');
-    let targetEl = null;
-
-    for (let i = 0; i < links.length; i++) {
-      const a = links[i];
-      const href = a.getAttribute('href') || a.href || '';
-      if (C.extractNoteId(href) === noteId) {
-        // 优先选取具备 cover 或 title 类的关键点击节点
-        if (a.classList && (a.classList.contains('cover') || a.classList.contains('title'))) {
-          targetEl = a;
-          break;
-        }
-        if (!targetEl) targetEl = a;
-      }
-    }
-
-    // 若未直接匹配到 a[href]，寻找其父级 card 容器内的可点击元素
-    if (!targetEl) {
-      const allCards = $$('section, article, [class*="note-item"], [class*="card"]');
-      for (let i = 0; i < allCards.length; i++) {
-        const c = allCards[i];
-        const innerA = $('a[href*="' + noteId + '"]', c);
-        if (innerA) {
-          targetEl = innerA;
-          break;
-        }
-      }
-    }
+    // 1. 在当前页面的 DOM 中寻找该 noteId 对应的原生卡片
+    const targetEl = findNoteCardElement(noteId);
 
     if (targetEl) {
       try {
-        targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // 瞬时定位至视口中央，保证事件坐标有效
+        targetEl.scrollIntoView({ behavior: 'auto', block: 'center' });
       } catch (e) {}
 
-      // 派发全套鼠标事件以确保能被 Vue / React 等事件委托及原生监听捕获
-      const cardContainer = (targetEl.closest && targetEl.closest('section, article, [class*="note-item"], [class*="card"]')) || targetEl.parentElement;
-      const targets = [targetEl];
-      if (cardContainer && cardContainer !== targetEl) targets.push(cardContainer);
-
-      const rect = targetEl.getBoundingClientRect();
-      const clientX = rect.left + rect.width / 2;
-      const clientY = rect.top + rect.height / 2;
-      targets.forEach(function (el) {
-        ['mousedown', 'mouseup', 'click'].forEach(function (eventType) {
-          const evt = new MouseEvent(eventType, {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX: clientX,
-            clientY: clientY,
-          });
-          el.dispatchEvent(evt);
-        });
-      });
-      if (typeof targetEl.click === 'function') {
+      // 小红书卡片由 Vue 挂载，点击卡片上的 a.cover 或 targetEl 即可原生呼起弹窗浮层
+      try {
         targetEl.click();
-      }
-      success = true;
-    } else {
-      // 2. 如果当前 DOM 中未找到节点（未滚动加载或已被虚拟列表回收）
-      // 动态构造小红书同域链接并派发点击：
-      // 关键突破：在个人主页必须使用 /user/profile/:userId/:noteId 内部单页嵌套路由！
-      // 严禁在个人主页使用 /explore/:noteId，否则会使小红书卸载 UserProfile 视图并跳转到发现首页！
-      const currentProfileMatch = location.pathname.match(PROFILE_RE);
-      const profileUserId = (currentProfileMatch && currentProfileMatch[1]) || (myProfileInfo && myProfileInfo.userId) || '';
-      const token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
-
-      let finalUrl = '';
-      if (profileUserId) {
-        finalUrl = '/user/profile/' + profileUserId + '/' + noteId + (token ? ('?xsec_token=' + token + '&xsec_source=pc_user') : '?xsec_source=pc_user');
-      } else {
-        finalUrl = noteUrl || C.buildNoteUrl(noteId, token);
+      } catch (e) {
+        const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+        targetEl.dispatchEvent(evt);
       }
 
-      if (finalUrl) {
-        const dummy = document.createElement('a');
-        dummy.href = finalUrl;
-        dummy.style.position = 'fixed';
-        dummy.style.opacity = '0';
-        dummy.style.pointerEvents = 'none';
-        document.body.appendChild(dummy);
-        ['mousedown', 'mouseup', 'click'].forEach(function (eventType) {
-          const evt = new MouseEvent(eventType, {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-          });
-          dummy.dispatchEvent(evt);
-        });
-        if (typeof dummy.click === 'function') dummy.click();
-        dummy.remove();
-        success = true;
-      }
-    }
-
-    if (success) {
       setupPreviewModalWatcher(!!fromStack);
+      return true;
     }
 
-    return success;
+    // 2. 如果卡片不在当前 DOM 中（未向下滚动加载或已被小红书虚拟列表回收）
+    // 严禁在此派发 dummy <a> 原生超链接点击，否则会导致小红书整页物理重载并跳往发现首页！
+    if (fromStack) {
+      return false;
+    }
+
+    // 从右侧列表（小眼睛）触发的预览：在新标签页安全打开，绝不破坏当前主页与侧边栏进度
+    const currentProfileMatch = location.pathname.match(PROFILE_RE);
+    const profileUserId = (currentProfileMatch && currentProfileMatch[1]) || (myProfileInfo && myProfileInfo.userId) || '';
+    const token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
+    let finalUrl = '';
+    if (profileUserId) {
+      finalUrl = '/user/profile/' + profileUserId + '/' + noteId + (token ? ('?xsec_token=' + token + '&xsec_source=pc_user') : '?xsec_source=pc_user');
+    } else {
+      finalUrl = noteUrl || C.buildNoteUrl(noteId, token);
+    }
+    if (finalUrl) {
+      showToast('该笔记尚未滚动加载，已在新标签页为您打开', 'info');
+      window.open(finalUrl, '_blank', 'noopener');
+    }
+    return true;
   }
 
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
@@ -4127,6 +4117,20 @@
     if (location.href !== lastKnownUrl) {
       lastKnownUrl = location.href;
 
+      try {
+        const savedOrigin = sessionStorage.getItem('rn_preview_origin');
+        const savedTime = parseInt(sessionStorage.getItem('rn_preview_time') || '0', 10);
+        if (savedOrigin && (Date.now() - savedTime < 180000)) {
+          const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+          if (isHomeExplore) {
+            sessionStorage.removeItem('rn_preview_origin');
+            sessionStorage.removeItem('rn_preview_time');
+            location.replace(savedOrigin);
+            return;
+          }
+        }
+      } catch (e) {}
+
       if (activeModalPreview || stackSuspended) {
         const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
         if (isHomeExplore && originProfileUrl) {
@@ -4171,6 +4175,20 @@
   }
 
   function tick() {
+    try {
+      const savedOrigin = sessionStorage.getItem('rn_preview_origin');
+      const savedTime = parseInt(sessionStorage.getItem('rn_preview_time') || '0', 10);
+      if (savedOrigin && (Date.now() - savedTime < 180000)) {
+        const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+        if (isHomeExplore) {
+          sessionStorage.removeItem('rn_preview_origin');
+          sessionStorage.removeItem('rn_preview_time');
+          location.replace(savedOrigin);
+          return;
+        }
+      }
+    } catch (e) {}
+
     if ((activeModalPreview || stackSuspended) && originProfileUrl) {
       const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
       if (isHomeExplore) {
@@ -4203,6 +4221,20 @@
   window.addEventListener('popstate', onUrlChange);
 
   (async function boot() {
+    try {
+      const savedOrigin = sessionStorage.getItem('rn_preview_origin');
+      const savedTime = parseInt(sessionStorage.getItem('rn_preview_time') || '0', 10);
+      if (savedOrigin && (Date.now() - savedTime < 180000)) {
+        const isHomeExplore = location.pathname === '/explore' || location.pathname === '/explore/' || location.pathname === '/';
+        if (isHomeExplore) {
+          sessionStorage.removeItem('rn_preview_origin');
+          sessionStorage.removeItem('rn_preview_time');
+          location.replace(savedOrigin);
+          return;
+        }
+      }
+    } catch (e) {}
+
     await loadStorage();
     updateMyProfileInfo();
     quietly(detectMyUserInfo());
