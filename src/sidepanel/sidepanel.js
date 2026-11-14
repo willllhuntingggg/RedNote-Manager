@@ -695,8 +695,8 @@ function renderList(candidates, visible, st, query) {
       '<div class="rn-item-main">' +
         '<div class="rn-item-row">' +
           '<span class="rn-nm">' + esc(titleOf(n)) + '</span>' +
-          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="在新标签页中打开查看笔记原文">' +
-            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>' +
+          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="即时预览（在网页中呼出原生详情；按住 Cmd/Ctrl 新标签打开）">' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
           '</a>' +
         '</div>' +
         tagsHtml +
@@ -1356,12 +1356,39 @@ function bindEvents() {
       if (lastState) applyState(lastState);
       return;
     }
-    // 点击查看原文外链，优先使用 chrome.tabs.create 打开新标签页，并阻止冒泡到列表项勾选事件
+    // 点击即时预览图标：普通点击优先呼出小红书原生详情弹窗；按住 Cmd/Ctrl 键则在新标签页打开
     const link = ev.target && ev.target.closest ? ev.target.closest('.rn-item-link') : null;
     if (link) {
       ev.preventDefault();
       ev.stopPropagation();
       const targetUrl = link.getAttribute('href') || link.href;
+      const itemEl = link.closest('.rn-item');
+      const noteId = itemEl ? itemEl.dataset.id : '';
+
+      // 若按住 Cmd/Ctrl 快捷键，保留新标签页打开能力
+      if (ev.metaKey || ev.ctrlKey) {
+        if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
+          if (chrome.tabs && typeof chrome.tabs.create === 'function') {
+            chrome.tabs.create({ url: targetUrl });
+          } else {
+            window.open(targetUrl, '_blank', 'noopener');
+          }
+        }
+        return;
+      }
+
+      // 普通点击：向页面端发送即时预览请求呼出小红书原生弹窗
+      if (noteId) {
+        try {
+          const resp = await sendToTab('RN_PREVIEW_NOTE', {
+            noteId: noteId,
+            url: targetUrl,
+          });
+          if (resp && resp.ok) return;
+        } catch (e) {}
+      }
+
+      // 兜底降级：若未能唤起原生弹窗，则按原逻辑在新标签页打开
       if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
         if (chrome.tabs && typeof chrome.tabs.create === 'function') {
           chrome.tabs.create({ url: targetUrl });
@@ -1377,6 +1404,18 @@ function bindEvents() {
     const noteId = item.dataset.id;
     await sendToTab('RN_TOGGLE_SELECTION', { noteId: noteId, shiftKey: !!ev.shiftKey });
     requestState();
+  });
+
+  // 双击列表项：快捷呼出小红书原生详情弹窗预览
+  listEl.addEventListener('dblclick', async function (ev) {
+    const item = ev.target && ev.target.closest ? ev.target.closest('.rn-item') : null;
+    if (!item || !item.dataset.id) return;
+    const noteId = item.dataset.id;
+    const link = item.querySelector('.rn-item-link');
+    const targetUrl = link ? (link.getAttribute('href') || link.href) : '';
+    try {
+      await sendToTab('RN_PREVIEW_NOTE', { noteId: noteId, url: targetUrl });
+    } catch (e) {}
   });
   }
 

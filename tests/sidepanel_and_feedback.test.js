@@ -1181,13 +1181,38 @@ test('已处理/已取消的笔记不再出现在列表和叠卡中', () => {
   assert.strictEqual(getUnprocessed(notes, 'uncollect').length, 0);
 });
 
-test('笔记卡片与侧边栏支持查看原文外链生成', () => {
+test('笔记卡片与侧边栏支持查看原文外链生成与方案A原生弹窗即时预览', () => {
   const noteId = '64a1b2c3d4e5f60718293a4b';
   const token = 'AB1234567890XYZ';
   const fullUrl = C.buildNoteUrl(noteId, token);
   assert.strictEqual(fullUrl, 'https://www.xiaohongshu.com/explore/64a1b2c3d4e5f60718293a4b?xsec_token=AB1234567890XYZ&xsec_source=pc_user');
   assert.strictEqual(C.extractNoteId(fullUrl), noteId);
   assert.strictEqual(C.extractXsecToken(fullUrl), token);
+
+  // 验证方案 A 预览消息与分流逻辑
+  let sentMessage = null;
+  let openedTabUrl = null;
+
+  function handlePreviewClick(ev, id, url) {
+    if (ev.metaKey || ev.ctrlKey) {
+      openedTabUrl = url;
+      return;
+    }
+    sentMessage = { type: 'RN_PREVIEW_NOTE', noteId: id, url: url };
+  }
+
+  // 1. 普通点击：向小红书页面发送原生预览指令，不开新页签
+  handlePreviewClick({ metaKey: false, ctrlKey: false }, noteId, fullUrl);
+  assert.deepStrictEqual(sentMessage, {
+    type: 'RN_PREVIEW_NOTE',
+    noteId: noteId,
+    url: fullUrl,
+  });
+  assert.strictEqual(openedTabUrl, null);
+
+  // 2. 按住 Cmd/Ctrl 点击：保留打开新标签页能力
+  handlePreviewClick({ metaKey: true, ctrlKey: false }, noteId, fullUrl);
+  assert.strictEqual(openedTabUrl, fullUrl);
 });
 
 test('页面卡片入库保留完整 candidates 数据源，且在已处理状态下支持按需切换展示', () => {

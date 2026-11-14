@@ -3677,6 +3677,100 @@
     } catch (e) { /* 忽略 */ }
   }
 
+  /**
+   * 呼出小红书原生详情弹窗（方案 A：无感轻预览）
+   * 优先匹配当前页面 DOM 中已挂载的卡片并模拟真实用户点击，
+   * 若卡片已被虚拟列表回收则就地派发同域链接点击触发单页路由。
+   */
+  function previewNote(noteId, noteUrl) {
+    if (!noteId) return false;
+
+    // 若当前叠卡弹窗处于打开状态，先平滑收起叠卡，避免弹窗重叠
+    if (stackState.open) {
+      closeStackView();
+    }
+
+    // 1. 在当前页面的 DOM 中寻找该 noteId 对应的卡片或链接
+    const links = $$('a[href*="' + noteId + '"]');
+    let targetEl = null;
+
+    for (let i = 0; i < links.length; i++) {
+      const a = links[i];
+      const href = a.getAttribute('href') || a.href || '';
+      if (C.extractNoteId(href) === noteId) {
+        // 优先选取具备 cover 或 title 类的关键点击节点
+        if (a.classList && (a.classList.contains('cover') || a.classList.contains('title'))) {
+          targetEl = a;
+          break;
+        }
+        if (!targetEl) targetEl = a;
+      }
+    }
+
+    // 若未直接匹配到 a[href]，寻找其父级 card 容器内的可点击元素
+    if (!targetEl) {
+      const allCards = $$('section, article, [class*="note-item"], [class*="card"]');
+      for (let i = 0; i < allCards.length; i++) {
+        const c = allCards[i];
+        const innerA = $('a[href*="' + noteId + '"]', c);
+        if (innerA) {
+          targetEl = innerA;
+          break;
+        }
+      }
+    }
+
+    if (targetEl) {
+      try {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {}
+
+      // 派发全套鼠标事件以确保能被 Vue / React 等事件委托及原生监听捕获
+      const rect = targetEl.getBoundingClientRect();
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      ['mousedown', 'mouseup', 'click'].forEach(function (eventType) {
+        const evt = new MouseEvent(eventType, {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: clientX,
+          clientY: clientY,
+        });
+        targetEl.dispatchEvent(evt);
+      });
+      if (typeof targetEl.click === 'function') {
+        targetEl.click();
+      }
+      return true;
+    }
+
+    // 2. 如果当前 DOM 中未找到节点（已被虚拟列表回收或滚出视区）
+    // 动态构造小红书同域链接并派发点击，利用小红书单页路由直接呼出原生详情弹窗
+    const finalUrl = noteUrl || C.buildNoteUrl(noteId, (state.xsecTokens && state.xsecTokens[noteId]) || '');
+    if (finalUrl) {
+      const dummy = document.createElement('a');
+      dummy.href = finalUrl;
+      dummy.style.position = 'fixed';
+      dummy.style.opacity = '0';
+      dummy.style.pointerEvents = 'none';
+      document.body.appendChild(dummy);
+      ['mousedown', 'mouseup', 'click'].forEach(function (eventType) {
+        const evt = new MouseEvent(eventType, {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        });
+        dummy.dispatchEvent(evt);
+      });
+      if (typeof dummy.click === 'function') dummy.click();
+      dummy.remove();
+      return true;
+    }
+
+    return false;
+  }
+
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!msg || typeof msg.type !== 'string' || msg.type.indexOf('RN_') !== 0) return;
 
@@ -3814,6 +3908,11 @@
     if (msg.type === 'RN_CLOSE_STACK_VIEW') {
       if (stackState.open) closeStackView();
       sendResponse({ ok: true, state: fullPublicState() });
+      return;
+    }
+    if (msg.type === 'RN_PREVIEW_NOTE') {
+      const ok = previewNote(msg.noteId, msg.url);
+      sendResponse({ ok: ok, state: fullPublicState() });
       return;
     }
   });
