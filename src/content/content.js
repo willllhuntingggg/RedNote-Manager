@@ -1982,35 +1982,36 @@
    */
   function getStackFilteredList() {
     const curMode = state.settings.mode;
-    // 1. 如果有侧边栏精准同步过来的当前可见 ID 列表，优先严格对齐并保持顺序（排除已处理笔记）
+    let result = [];
+    // 1. 如果有侧边栏精准同步过来的当前可见 ID 列表，优先严格对齐候选池（排除已处理笔记）
     if (Array.isArray(stackState.filter.explicitIds)) {
       const candMap = new Map();
       state.candidates.forEach(function (n) { candMap.set(n.id, n); });
-      return stackState.filter.explicitIds.map(function (id) {
+      result = stackState.filter.explicitIds.map(function (id) {
         return candMap.get(id);
       }).filter(Boolean).filter(function (n) {
         return !isProcessed(curMode, n.id);
       });
-    }
-
-    // 2. 否则按关键词 + Tag 联合过滤当前模式的 candidates（排除已处理笔记）
-    let list = state.candidates.slice();
-    const kw = (stackState.filter.keyword || state.settings.keyword || '').trim();
-    if (kw) {
-      const terms = C.parseKeywords(kw);
-      list = list.filter(function (n) { return C.matchKeywords(n, terms); });
-    }
-    const tag = stackState.filter.tag;
-    if (tag && tag !== 'all') {
-      list = list.filter(function (n) {
-        const info = state.aiTags && state.aiTags[n.id];
-        if (!info) return false;
-        return info.decision === tag || info.category === tag;
+    } else {
+      // 2. 否则按关键词 + Tag 联合过滤当前模式的 candidates（排除已处理笔记）
+      let list = state.candidates.slice();
+      const kw = (stackState.filter.keyword || state.settings.keyword || '').trim();
+      if (kw) {
+        const terms = C.parseKeywords(kw);
+        list = list.filter(function (n) { return C.matchKeywords(n, terms); });
+      }
+      const tag = stackState.filter.tag;
+      if (tag && tag !== 'all') {
+        list = list.filter(function (n) {
+          const info = state.aiTags && state.aiTags[n.id];
+          if (!info) return false;
+          return info.decision === tag || info.category === tag;
+        });
+      }
+      result = list.filter(function (n) {
+        return !isProcessed(curMode, n.id);
       });
     }
-    let result = list.filter(function (n) {
-      return !isProcessed(curMode, n.id);
-    });
 
     // 3. 应用排序方式：正序 (asc) 翻转为从旧到新；倒序 (desc) 保持最新优先；随机 (random) 无放回随机洗牌
     if (stackState.orderMode === 'asc') {
@@ -2037,21 +2038,10 @@
       });
     }
 
-    const currentNote = stackState.list[stackState.index];
     const reordered = getStackFilteredList();
     stackState.list = reordered;
     stackState.history = [];
-
-    let targetIdx = 0;
-    if (currentNote && currentNote.id && newMode !== 'random') {
-      for (let i = 0; i < reordered.length; i++) {
-        if (reordered[i].id === currentNote.id) {
-          targetIdx = i;
-          break;
-        }
-      }
-    }
-    stackState.index = targetIdx;
+    stackState.index = 0; // 切换排序模式后，从该排序的第一张开始浏览
     renderStackCard();
     showToast(newMode === 'asc' ? '已切换为：按时间正序（从旧到新）' : (newMode === 'random' ? '已切换为：无重复随机洗牌回顾' : '已切换为：按时间倒序（最新优先）'));
   }

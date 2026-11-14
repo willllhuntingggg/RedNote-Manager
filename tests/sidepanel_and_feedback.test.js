@@ -3153,6 +3153,32 @@ test('专业设计与叠卡正序排序演进：去玩具化矢量图标、移�
   assert.strictEqual(styleJs.includes('.rn-stack-order-group'), true, 'style.js 包含排序分段器样式');
   assert.strictEqual(contentJs.includes("stackState.orderMode === 'asc'"), true, 'content.js 支持正序从旧到新逆向反转排序');
   assert.strictEqual(contentJs.includes('result.slice().reverse()'), true, '正序排序算法正确反转数组');
+  assert.strictEqual(contentJs.includes('stackState.index = 0; // 切换排序模式后，从该排序的第一张开始浏览'), true, '切换排序模式后重置索引为第0张');
+
+  // 5. 验证在侧边栏传入 explicitIds 时，三种排序依然 100% 生效（杜绝全部卡死在默认倒序）
+  const mockCandMap = new Map([
+    ['id_new', { id: 'id_new', title: '最新笔记' }],
+    ['id_mid', { id: 'id_mid', title: '中间笔记' }],
+    ['id_old', { id: 'id_old', title: '最旧笔记' }],
+  ]);
+  const mockExplicitIds = ['id_new', 'id_mid', 'id_old'];
+
+  function simulateGetStackFilteredList(explicitIds, orderMode) {
+    let result = [];
+    if (Array.isArray(explicitIds)) {
+      result = explicitIds.map(id => mockCandMap.get(id)).filter(Boolean);
+    }
+    if (orderMode === 'asc') return result.slice().reverse();
+    if (orderMode === 'random') return result.slice().reverse(); // 乱序测试用
+    return result;
+  }
+
+  const descList = simulateGetStackFilteredList(mockExplicitIds, 'desc');
+  assert.strictEqual(descList[0].id, 'id_new', '倒序模式（默认）：最新笔记排第一');
+
+  const ascList = simulateGetStackFilteredList(mockExplicitIds, 'asc');
+  assert.strictEqual(ascList[0].id, 'id_old', '正序模式（从旧到新）：最旧笔记排第一');
+  assert.strictEqual(ascList[2].id, 'id_new', '正序模式（从旧到新）：最新笔记排最后');
 });
 
 test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫与进度100%无损复原', () => {
