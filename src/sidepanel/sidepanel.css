@@ -1791,20 +1791,12 @@ html[data-theme="light"] .rn-badge-reason {
   display: block;
 }
 
-.rn-sponsor-quote {
-  margin-top: 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #ff5c78;
-  letter-spacing: 0.3px;
-}
-
 .rn-sponsor-sub {
-  margin-top: 6px;
-  font-size: 11px;
+  margin-top: 14px;
+  font-size: 11.5px;
   color: var(--text-muted);
-  line-height: 1.45;
-  max-width: 250px;
+  line-height: 1.5;
+  max-width: 260px;
 }
 
 @keyframes rnFadeIn {
