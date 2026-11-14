@@ -3847,116 +3847,45 @@
   function suspendStackViewAndPreview(noteId, noteUrl) {
     if (!noteId) return;
 
-    // 1. 检查页面 DOM 中是否已挂载该笔记卡片
-    const targetEl = findNoteCardElement(noteId);
-    if (!targetEl) {
-      // 笔记不在当前 DOM 中（未向下滚动加载或已被小红书虚拟列表回收）
-      // 严禁在此派发原生超链接跳转，否则小红书会整页刷新为单笔记探索流，并在关闭时跳到 /explore 首页！
-      // 直接在新标签页安全打开，叠卡速览保持当前进度完全不中断
-      showToast('该笔记尚未滚动加载，已在新标签页为您打开', 'info');
-      const token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
-      const finalUrl = noteUrl || C.buildNoteUrl(noteId, token);
-      if (finalUrl) {
-        window.open(finalUrl, '_blank', 'noopener');
+    // 方案 B：统一采用 window.open 新标签页安全打开
+    // 叠卡速览保持当前进度绝对不中断，小红书个人主页绝不触发任何路由跳转或跳回首页！
+    let token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
+    if (!token) {
+      const el = findNoteCardElement(noteId);
+      if (el) {
+        token = C.extractXsecToken(el.getAttribute('href') || el.href || '');
+        if (token && state.xsecTokens) state.xsecTokens[noteId] = token;
       }
-      return;
     }
-
-    if (PROFILE_RE.test(location.pathname)) {
-      originProfileUrl = location.href;
-      try {
-        sessionStorage.setItem('rn_preview_origin', location.href);
-        sessionStorage.setItem('rn_preview_time', String(Date.now()));
-      } catch (e) {}
+    const finalUrl = C.buildNoteUrl(noteId, token);
+    if (finalUrl) {
+      showToast('已在新标签页为您打开笔记详情', 'info');
+      window.open(finalUrl, '_blank', 'noopener');
     }
-
-    stackSuspended = true;
-    suspendedProgress = {
-      index: stackState.index,
-      noteId: (stackState.list && stackState.list[stackState.index] && stackState.list[stackState.index].id) || noteId,
-    };
-
-    // 释放宿主容器占位，确保不遮挡底层原生详情弹窗的任何点击
-    if (state.els && state.els.host) {
-      state.els.host.style.width = '0';
-      state.els.host.style.height = '0';
-      state.els.host.style.pointerEvents = 'none';
-    }
-
-    const overlay = (stackState.els && stackState.els.overlay) || $('#rn-stack-overlay');
-    if (overlay) {
-      overlay.style.display = 'none';
-      overlay.classList.add('rn-stack-suspended');
-    }
-
-    const success = previewNote(noteId, noteUrl, true);
-    if (!success) {
-      resumeStackView();
-      if (noteUrl) window.open(noteUrl, '_blank', 'noopener');
-      return;
-    }
-
-    setupPreviewModalWatcher(true);
   }
 
   /**
-   * 呼出小红书原生详情弹窗（方案 A：无感轻预览）
-   * 优先匹配当前页面 DOM 中已挂载的卡片并模拟真实用户点击呼起弹窗浮层；
-   * 若卡片尚未滚动加载或已被虚拟列表回收，则安全降级至新标签页打开，
-   * 彻底避免触发小红书整页重载或路由跳往 /explore 发现页！
+   * 预览笔记（方案 B：统一 window.open 规范化新标签页打开）
+   * 彻底避免触发小红书整页重载、SPA 路由冲突或跳往 /explore 发现页！
    */
   function previewNote(noteId, noteUrl, fromStack) {
     if (!noteId) return false;
 
-    // 记录发起预览时的个人主页完整 URL，并持久化到 sessionStorage
-    if (PROFILE_RE.test(location.pathname)) {
-      originProfileUrl = location.href;
-      try {
-        sessionStorage.setItem('rn_preview_origin', location.href);
-        sessionStorage.setItem('rn_preview_time', String(Date.now()));
-      } catch (e) {}
-    }
-
-    // 若当前叠卡弹窗处于打开状态且不是挂起模式，先平滑收起叠卡，避免弹窗重叠
-    if (stackState.open && !fromStack) {
-      closeStackView();
-    }
-
-    // 1. 在当前页面的 DOM 中寻找该 noteId 对应的原生卡片
-    const targetEl = findNoteCardElement(noteId);
-
-    if (targetEl) {
-      try {
-        // 瞬时定位至视口中央，保证事件坐标有效
-        targetEl.scrollIntoView({ behavior: 'auto', block: 'center' });
-      } catch (e) {}
-
-      // 小红书卡片由 Vue 挂载，点击卡片上的 a.cover 或 targetEl 即可原生呼起弹窗浮层
-      try {
-        targetEl.click();
-      } catch (e) {
-        const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-        targetEl.dispatchEvent(evt);
+    let token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
+    if (!token) {
+      const el = findNoteCardElement(noteId);
+      if (el) {
+        token = C.extractXsecToken(el.getAttribute('href') || el.href || '');
+        if (token && state.xsecTokens) state.xsecTokens[noteId] = token;
       }
-
-      setupPreviewModalWatcher(!!fromStack);
-      return true;
     }
-
-    // 2. 如果卡片不在当前 DOM 中（未向下滚动加载或已被小红书虚拟列表回收）
-    // 严禁在此派发 dummy <a> 原生超链接点击，否则会导致小红书整页物理重载并跳往发现首页！
-    if (fromStack) {
-      return false;
-    }
-
-    // 从右侧列表（小眼睛）触发的预览：在新标签页安全打开，绝不破坏当前主页与侧边栏进度
-    const token = (state.xsecTokens && state.xsecTokens[noteId]) || C.extractXsecToken(noteUrl || '') || '';
     const finalUrl = C.buildNoteUrl(noteId, token);
     if (finalUrl) {
-      showToast('该笔记尚未滚动加载，已在新标签页为您打开', 'info');
+      showToast('已在新标签页为您打开笔记详情', 'info');
       window.open(finalUrl, '_blank', 'noopener');
+      return true;
     }
-    return true;
+    return false;
   }
 
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {

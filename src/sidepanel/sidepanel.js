@@ -702,7 +702,7 @@ function renderList(candidates, visible, st, query) {
       '<div class="rn-item-main">' +
         '<div class="rn-item-row">' +
           '<span class="rn-nm">' + esc(titleOf(n)) + '</span>' +
-          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="即时预览（在网页中呼出原生详情；按住 Cmd/Ctrl 新标签打开）">' +
+          '<a class="rn-item-link" href="' + esc(noteUrl) + '" target="_blank" rel="noopener" title="查看原文（新标签页打开）">' +
             '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' +
           '</a>' +
         '</div>' +
@@ -1372,30 +1372,7 @@ function bindEvents() {
       const itemEl = link.closest('.rn-item');
       const noteId = itemEl ? itemEl.dataset.id : '';
 
-      // 若按住 Cmd/Ctrl 快捷键，保留新标签页打开能力
-      if (ev.metaKey || ev.ctrlKey) {
-        if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
-          if (chrome.tabs && typeof chrome.tabs.create === 'function') {
-            chrome.tabs.create({ url: targetUrl });
-          } else {
-            window.open(targetUrl, '_blank', 'noopener');
-          }
-        }
-        return;
-      }
-
-      // 普通点击：向页面端发送即时预览请求呼出小红书原生弹窗
-      if (noteId) {
-        try {
-          const resp = await sendToTab('RN_PREVIEW_NOTE', {
-            noteId: noteId,
-            url: targetUrl,
-          });
-          if (resp && resp.ok) return;
-        } catch (e) {}
-      }
-
-      // 兜底降级：若未能唤起原生弹窗，则按原逻辑在新标签页打开
+      // 方案 B：统一在新标签页打开（保证个人主页与叠卡状态绝对不受干扰）
       if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
         if (chrome.tabs && typeof chrome.tabs.create === 'function') {
           chrome.tabs.create({ url: targetUrl });
@@ -1413,16 +1390,19 @@ function bindEvents() {
     requestState();
   });
 
-  // 双击列表项：快捷呼出小红书原生详情弹窗预览
-  listEl.addEventListener('dblclick', async function (ev) {
+  // 双击列表项：快捷在新标签页打开预览
+  listEl.addEventListener('dblclick', function (ev) {
     const item = ev.target && ev.target.closest ? ev.target.closest('.rn-item') : null;
     if (!item || !item.dataset.id) return;
-    const noteId = item.dataset.id;
     const link = item.querySelector('.rn-item-link');
     const targetUrl = link ? (link.getAttribute('href') || link.href) : '';
-    try {
-      await sendToTab('RN_PREVIEW_NOTE', { noteId: noteId, url: targetUrl });
-    } catch (e) {}
+    if (targetUrl && targetUrl !== '#' && !targetUrl.startsWith('javascript:')) {
+      if (chrome.tabs && typeof chrome.tabs.create === 'function') {
+        chrome.tabs.create({ url: targetUrl });
+      } else {
+        window.open(targetUrl, '_blank', 'noopener');
+      }
+    }
   });
   }
 
