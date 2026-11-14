@@ -307,7 +307,7 @@ function executeRenderDisconnected(message) {
   lastState = null;
   const bannerTitle = $('rn-mode-title');
   if (bannerTitle) {
-    bannerTitle.innerHTML = '当前读取已收藏的笔记 <b id="rn-s-cand">–</b> 条';
+    bannerTitle.innerHTML = '检测到 <b id="rn-s-cand">–</b> 条收藏';
   } else if ($('rn-s-cand')) {
     $('rn-s-cand').textContent = '–';
   }
@@ -321,7 +321,7 @@ function executeRenderDisconnected(message) {
   if ($('rn-stop')) $('rn-stop').disabled = true;
   if ($('rn-scan')) {
     $('rn-scan').disabled = true;
-    $('rn-scan').textContent = '读取列表';
+    $('rn-scan').textContent = '检测';
     $('rn-scan').className = 'rn-btn rn-mini rn-mode-scan-btn';
   }
   if ($('rn-undo')) $('rn-undo').disabled = true;
@@ -417,17 +417,17 @@ function applyState(st) {
     const SVG_ICON_NOTES = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>';
 
     if (isOwn) {
-      if (bannerTitle) bannerTitle.textContent = '当前模式：我的笔记（受安全保护）';
+      if (bannerTitle) bannerTitle.textContent = '当前模式：我的笔记（安全保护）';
       if (bannerSub) bannerSub.textContent = '请在小红书切换至「收藏」或「赞过」';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_NOTES;
     } else if (isUnlike) {
-      if (bannerTitle) bannerTitle.innerHTML = '当前读取已点赞的笔记 <b id="rn-s-cand">' + candCount + '</b> 条';
+      if (bannerTitle) bannerTitle.innerHTML = '检测到 <b id="rn-s-cand">' + candCount + '</b> 条点赞';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_HEART;
     } else {
-      if (bannerTitle) bannerTitle.innerHTML = '当前读取已收藏的笔记 <b id="rn-s-cand">' + candCount + '</b> 条';
+      if (bannerTitle) bannerTitle.innerHTML = '检测到 <b id="rn-s-cand">' + candCount + '</b> 条收藏';
       if (bannerSub) bannerSub.textContent = '跟随网页';
       if (bannerBadge) bannerBadge.textContent = '';
       if (bannerIcon) bannerIcon.innerHTML = SVG_ICON_STAR;
@@ -484,7 +484,7 @@ function applyState(st) {
     stopBtn.disabled = !isBusy;
   }
 
-  // 读取列表与停止按钮双态合一（位于当前模式横幅右侧）
+  // 检测与停止按钮双态合一（位于顶部标题栏右侧）
   if (scanBtn) {
     scanBtn.disabled = false;
     if (isBusy) {
@@ -492,9 +492,9 @@ function applyState(st) {
       scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn rn-scanning';
       scanBtn.title = '点击停止当前操作';
     } else {
-      scanBtn.textContent = '读取列表';
+      scanBtn.textContent = '检测';
       scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
-      scanBtn.title = '读取当前页面列表（按住 Shift 点击可清空缓存全新读取）';
+      scanBtn.title = '检测当前页面列表（按住 Shift 点击可清空缓存全新检测）';
     }
   }
 
@@ -883,6 +883,7 @@ function rnSetView(viewName) {
   const settingsView = $('rn-settings');
   const closeBtn = $('rn-btn-close') || $('rn-btn-back');
   const gearBtn = $('rn-gear');
+  const scanBtn = $('rn-scan');
 
   if (isSettings) {
     if (settingsView) {
@@ -893,6 +894,7 @@ function rnSetView(viewName) {
     if (bodyEl) {
       bodyEl.classList.add('rn-settings-open');
     }
+    if (scanBtn) scanBtn.hidden = true;
     if (gearBtn) {
       gearBtn.hidden = true;
       gearBtn.classList.add('rn-active');
@@ -900,6 +902,7 @@ function rnSetView(viewName) {
     if (closeBtn) closeBtn.hidden = false;
   } else {
     if (bodyEl) bodyEl.classList.remove('rn-settings-open');
+    if (scanBtn) scanBtn.hidden = false;
     if (gearBtn) {
       gearBtn.hidden = false;
       gearBtn.classList.remove('rn-active');
@@ -926,10 +929,11 @@ if (typeof globalThis !== 'undefined') {
 /* ============================ 事件绑定 ============================ */
 
 function bindEvents() {
-  // 模式状态卡片：点击平滑滚动至列表顶部
+  // 模式状态卡片：点击平滑滚动至列表顶部（排除按钮交互）
   const modeBanner = $('rn-mode-banner');
   if (modeBanner) {
-    modeBanner.addEventListener('click', function () {
+    modeBanner.addEventListener('click', function (ev) {
+      if (ev.target && ev.target.closest('button')) return;
       const list = $('rn-list');
       if (list) list.scrollTo({ top: 0, behavior: 'smooth' });
     });
@@ -949,16 +953,16 @@ function bindEvents() {
     });
   });
 
-  // 读取列表与停止按钮双态事件
+  // 检测与停止按钮双态事件
   const scanBtn = $('rn-scan');
   if (scanBtn) {
     scanBtn.addEventListener('click', async function (ev) {
       const isBusy = (lastState && lastState.running) || (lastState && lastState.scanning);
       if (isBusy) {
-        // 乐观即刻切为普通读取状态，无延迟响应用户操作
-        scanBtn.textContent = '读取列表';
+        // 乐观即刻切为普通检测状态，无延迟响应用户操作
+        scanBtn.textContent = '检测';
         scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
-        scanBtn.title = '读取当前页面列表（按住 Shift 点击可清空缓存全新读取）';
+        scanBtn.title = '检测当前页面列表（按住 Shift 点击可清空缓存全新检测）';
         if (lastState) {
           lastState.running = false;
           lastState.scanning = false;
@@ -1002,9 +1006,9 @@ function bindEvents() {
   if (stopBtn) {
     stopBtn.addEventListener('click', async function () {
       if (scanBtn) {
-        scanBtn.textContent = '读取列表';
+        scanBtn.textContent = '检测';
         scanBtn.className = 'rn-btn rn-mini rn-mode-scan-btn';
-        scanBtn.title = '读取当前页面列表（按住 Shift 点击可清空缓存全新读取）';
+        scanBtn.title = '检测当前页面列表（按住 Shift 点击可清空缓存全新检测）';
       }
       if (lastState) {
         lastState.running = false;

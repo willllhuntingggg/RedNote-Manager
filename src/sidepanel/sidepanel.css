@@ -228,15 +228,17 @@ body {
   width: 100%;
 }
 
-/* 顶部标题栏 */
+/* 顶部标题栏（模式状态与检测操作合一） */
 .rn-hdr {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 9px 12px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
+  min-height: 44px;
 }
 
 .rn-close-btn,
@@ -263,34 +265,11 @@ body {
   display: none !important;
 }
 
-.rn-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--primary-gradient);
-  color: #fff;
-  font-weight: 800;
-  font-size: 13px;
+.rn-hdr-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(255, 46, 77, 0.35);
-  letter-spacing: -0.5px;
-}
-
-.rn-titles {
-  flex: 1;
-  min-width: 0;
-}
-
-.rn-title {
-  font-family: 'Noteworthy', 'Chalkboard SE', 'Ink Free', 'Bradley Hand', 'Caveat', 'Segoe Print', cursive, sans-serif;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  color: var(--text-main);
-  line-height: 1.1;
-  margin: 0;
+  gap: 6px;
+  flex-shrink: 0;
 }
   color: var(--text-muted);
   font-weight: 400;
@@ -411,36 +390,31 @@ body {
   pointer-events: none;
 }
 
-/* 模式指示条 (跟随小红书页面) */
-.rn-mode-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  background: var(--banner-bg);
-  border: 1px solid var(--banner-border);
-  border-radius: 9px;
-  padding: 7px 10px;
-  transition: all 0.2s ease;
-}
-
+/* 模式指示与信息 */
 .rn-mode-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .rn-mode-icon {
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .rn-mode-title {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.2px;
 }
 
 .rn-mode-title b,

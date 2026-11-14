@@ -2341,8 +2341,8 @@ test('模式指示条状态化与静默熔断机制：废除超时开闸吞噬�
   const sidepanelJs = fs.readFileSync(path.resolve(__dirname, '../src/sidepanel/sidepanel.js'), 'utf8');
   const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
 
-  // 1. UI 架构检测：已移除双可点击 Tab，全面升级为模式状态条与右侧操作按钮
-  assert.ok(sidepanelHtml.includes('class="rn-mode-banner"'), 'HTML 必须包含 rn-mode-banner 模式指示条');
+  // 1. UI 架构检测：已移除双可点击 Tab，全面升级为顶栏模式状态条与右侧操作按钮
+  assert.ok(sidepanelHtml.includes('id="rn-mode-banner"') || sidepanelHtml.includes('rn-mode-banner'), 'HTML 必须包含 rn-mode-banner 模式指示条');
   assert.ok(sidepanelHtml.includes('id="rn-mode-title"'), '指示条必须包含标题容器');
   assert.ok(sidepanelHtml.includes('id="rn-scan"'), '指示条整合读取列表/停止双态操作按钮');
   assert.ok(sidepanelJs.includes("const modeBanner = $('rn-mode-banner')"), 'JS 必须动态驱动模式指示条渲染');
@@ -2923,17 +2923,17 @@ test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支
   assert.strictEqual(mockResolveEffectiveTheme(undefined, true), 'dark', '未定义时默认 auto，随系统深色解析为 dark');
 });
 
-test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收起，手写体顶栏，零冗余信息)', () => {
-  // 1. 验证 HTML 结构：纯净手写体顶栏 + 右侧关闭按钮 + 双视图容器
+test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收起，集成检测操作与设置齿轮)', () => {
+  // 1. 验证 HTML 结构：顶部集成模式与检测操作 + 右侧设置/关闭按钮 + 双视图容器
   const htmlPath = path.join(__dirname, '../src/sidepanel/sidepanel.html');
   const htmlContent = fs.readFileSync(htmlPath, 'utf8');
 
-  // 顶栏元素：仅保留 Logo 和插件名称，冗余副标题彻底移除，右侧关闭按钮替换咖啡位置
+  // 顶栏元素：原Logo和产品名称已精简移除，直接以模式状态与检测按钮为标题栏，右侧保留设置齿轮与关闭按钮
   assert.strictEqual(htmlContent.includes('id="rn-btn-close"'), true, '顶栏右侧包含关闭设置按钮 #rn-btn-close');
-  assert.strictEqual(htmlContent.includes('id="rn-hdr-logo"'), true, '顶栏 Logo 具备独立 ID');
-  assert.strictEqual(htmlContent.includes('id="rn-title"'), true, '顶栏主标题具备 ID');
-  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-main"'), false, '彻底移除主工作区冗余副标题');
-  assert.strictEqual(htmlContent.includes('id="rn-hdr-subs-settings"'), false, '彻底移除设置区冗余副标题');
+  assert.strictEqual(htmlContent.includes('id="rn-hdr-logo"'), false, '原产品Logo已彻底精简移除');
+  assert.strictEqual(htmlContent.includes('id="rn-title"'), false, '原静态产品标题已精简移除');
+  assert.strictEqual(htmlContent.includes('id="rn-mode-title"'), true, '顶栏直接作为模式标题容器');
+  assert.strictEqual(htmlContent.includes('id="rn-scan"'), true, '顶栏集成检测/停止按钮');
   assert.strictEqual(htmlContent.includes('id="rn-gear"'), true, '顶栏保留偏好设置入口齿轮按钮');
 
   // 视图平级隔离结构
@@ -2943,7 +2943,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(htmlContent.includes('class="rn-view rn-view-settings"'), true, '设置视图带有 .rn-view 与 .rn-view-settings 类');
   assert.strictEqual(htmlContent.includes('class="rn-settings-card"'), true, '设置项以卡片式进行分组 (.rn-settings-card)');
 
-  // 2. 验证 CSS 样式：手写体标题 + 横向滑动进入收起动画
+  // 2. 验证 CSS 样式：横向滑动进入收起动画
   const cssPath = path.join(__dirname, '../src/sidepanel/sidepanel.css');
   const cssContent = fs.readFileSync(cssPath, 'utf8');
 
@@ -2953,7 +2953,6 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(cssContent.includes('.rn-view-settings {'), true, '包含 .rn-view-settings 容器');
   assert.strictEqual(cssContent.includes('.rn-settings-open .rn-view-settings'), true, '包含向左滑入打开样式定义');
   assert.strictEqual(cssContent.includes('translateX(100%)'), true, '默认位于右侧 100% 准备向左滑入');
-  assert.strictEqual(cssContent.includes('cursive'), true, '标题采用优雅手写字体族 cursive');
 
   // 3. 验证 JS 视图切换引擎逻辑与系统级快捷键支持
   const jsPath = path.join(__dirname, '../src/sidepanel/sidepanel.js');
@@ -2971,8 +2970,8 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
     'rn-main-view': { hidden: false },
     'rn-settings': { hidden: true, scrollTop: 120, classList: new Set() },
     'rn-btn-close': { hidden: true },
-    'rn-hdr-logo': { hidden: false },
-    'rn-title': { textContent: 'RedNote Manager' },
+    'rn-scan': { hidden: false },
+    'rn-mode-title': { textContent: '检测到 0 条收藏' },
     'rn-gear': {
       hidden: false,
       classList: {
@@ -2998,6 +2997,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
     const settingsView = mock$('rn-settings');
     const closeBtn = mock$('rn-btn-close');
     const gearBtn = mock$('rn-gear');
+    const scanBtn = mock$('rn-scan');
 
     if (isSettings) {
       if (settingsView) {
@@ -3005,6 +3005,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
         settingsView.scrollTop = 0;
       }
       mockBodyClassList.add('rn-settings-open');
+      if (scanBtn) scanBtn.hidden = true;
       if (gearBtn) {
         gearBtn.hidden = true;
         gearBtn.classList.add('rn-active');
@@ -3012,6 +3013,7 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
       if (closeBtn) closeBtn.hidden = false;
     } else {
       mockBodyClassList.delete('rn-settings-open');
+      if (scanBtn) scanBtn.hidden = false;
       if (gearBtn) {
         gearBtn.hidden = false;
         gearBtn.classList.remove('rn-active');
@@ -3027,9 +3029,8 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-main-view'].hidden, false, '初始状态主工作区可见');
   assert.strictEqual(mockElements['rn-settings'].hidden, true, '初始状态偏好设置隐藏');
   assert.strictEqual(mockElements['rn-btn-close'].hidden, true, '初始状态关闭按钮隐藏');
-  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, '初始状态Logo展示');
+  assert.strictEqual(mockElements['rn-scan'].hidden, false, '初始状态检测按钮展示');
   assert.strictEqual(mockElements['rn-gear'].hidden, false, '初始状态齿轮展示');
-  assert.strictEqual(mockElements['rn-title'].textContent, 'RedNote Manager', '初始标题为手写体 RedNote Manager');
 
   // 执行切换到偏好设置视图 (向左滑入)
   mockRnSetView('settings');
@@ -3038,8 +3039,8 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockElements['rn-settings'].hidden, false, '设置视图激活可见');
   assert.strictEqual(mockElements['rn-settings'].scrollTop, 0, '切入时自动回到顶部');
   assert.strictEqual(mockElements['rn-btn-close'].hidden, false, '关闭按钮显现于顶栏右侧');
+  assert.strictEqual(mockElements['rn-scan'].hidden, true, '进入设置时检测按钮隐藏');
   assert.strictEqual(mockElements['rn-gear'].hidden, true, '齿轮按钮隐藏');
-  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 始终常驻保持品牌纯净');
 
   // 执行返回主视图 (原路向右收起)
   mockRnSetView('main');
@@ -3047,8 +3048,8 @@ test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收�
   assert.strictEqual(mockBodyClassList.has('rn-settings-open'), false, '退出设置时移除类名，原路向右收起滑出');
   assert.strictEqual(mockElements['rn-settings'].hidden, true, '偏好设置完全隐藏');
   assert.strictEqual(mockElements['rn-btn-close'].hidden, true, '关闭按钮隐藏');
+  assert.strictEqual(mockElements['rn-scan'].hidden, false, '检测按钮重新展示');
   assert.strictEqual(mockElements['rn-gear'].hidden, false, '齿轮按钮重新恢复展示');
-  assert.strictEqual(mockElements['rn-hdr-logo'].hidden, false, 'Logo 恢复且始终呈现');
 });
 
 test('界面细节与控制状态交互演进：统计行拆分精简、已读取移至模式行、已处理与失败移入日志、停止态即刻响应', () => {
@@ -3066,7 +3067,7 @@ test('界面细节与控制状态交互演进：统计行拆分精简、已读�
 
   // 2. 已读取计数置于顶部模式行
   assert.strictEqual(htmlContent.includes('id="rn-s-cand"'), true, '模式指示条包含 #rn-s-cand 已读取计数');
-  assert.strictEqual(htmlContent.includes('当前读取已收藏的笔记'), true, '模式指示条文案规范对齐「当前读取已收藏的笔记 N 条」');
+  assert.strictEqual(htmlContent.includes('检测到'), true, '顶栏标题精简规范对齐「检测到 N 条收藏」');
 
   // 3. 已处理与失败计数放置于操作日志区头部
   assert.strictEqual(htmlContent.includes('id="rn-s-ok"'), true, '日志区包含 #rn-s-ok 已处理计数');
