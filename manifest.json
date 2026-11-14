@@ -8,8 +8,7 @@
   "host_permissions": [
     "https://*.xiaohongshu.com/*",
     "https://*.rednote.com/*",
-    "https://api.deepseek.com/*",
-    "https://*.deepseek.com/*"
+    "https://api.deepseek.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"
