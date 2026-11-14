@@ -32,9 +32,14 @@
   const KEY_HISTORY = 'rn:history';
   const KEY_AI_TAGS = 'rn:ai_tags';
   const PROFILE_RE = /\/user\/profile(?:\/([0-9a-f]{24}))?/i;
+  const MODAL_OVERLAY_RE = /^\/(?:explore|discovery\/item)\/[0-9a-zA-Z_-]+/i;
   const PROCESSED_CAP = 3000;
   const HISTORY_CAP = 800;
   const LOG_CAP = 200;
+
+  function isModalOverlayRoute() {
+    return MODAL_OVERLAY_RE.test(location.pathname);
+  }
 
   const TAB_ALIASES = { 收藏: ['收藏'], 点赞: ['点赞', '赞过'], 赞过: ['赞过', '点赞'] };
   const ACTIVE_RE = /(?:^|\s)(?:active|current|selected|on)(?:\s|$)/i;
@@ -1794,10 +1799,10 @@
     // 用户自主滚动浏览时，自动增量捕获新渲染的卡片并同步至侧边栏
     let scrollTimer = null;
     const onManualScroll = function () {
-      if (tabTransitionLock) return;
+      if (tabTransitionLock || stackSuspended || isModalOverlayRoute()) return;
       clearTimeout(scrollTimer);
       scrollTimer = setTimeout(function () {
-        if (tabTransitionLock) return;
+        if (tabTransitionLock || stackSuspended || isModalOverlayRoute()) return;
         if (syncDomCardsToCandidates()) {
           refreshPageCards();
           broadcastState();
@@ -1811,7 +1816,7 @@
     try {
       let mutTimer = null;
       const observer = new MutationObserver(function (mutations) {
-        if (tabTransitionLock) return;
+        if (tabTransitionLock || stackSuspended || isModalOverlayRoute()) return;
         let hasNewNodes = false;
         for (let i = 0; i < mutations.length; i++) {
           if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
@@ -1822,7 +1827,7 @@
         if (hasNewNodes) {
           clearTimeout(mutTimer);
           mutTimer = setTimeout(function () {
-            if (tabTransitionLock) return;
+            if (tabTransitionLock || stackSuspended || isModalOverlayRoute()) return;
             if (syncDomCardsToCandidates()) {
               refreshPageCards();
               broadcastState();
@@ -2132,6 +2137,7 @@
     stackState.open = false;
     stackState.working = false;
     stackState.sessionProcessed = 0;
+    suspendedProgress = { index: -1, noteId: null };
     if (stackState.els && stackState.els.overlay) {
       stackState.els.overlay.classList.remove('rn-open');
     }
@@ -3654,7 +3660,7 @@
           mode: u.mode,
         } : null;
       })(),
-      onProfile: PROFILE_RE.test(location.pathname),
+      onProfile: PROFILE_RE.test(location.pathname) || (state.mounted && (stackSuspended || isModalOverlayRoute())),
       isOwnNotes: isOwnNotesPage(),
       risk: state.stats.risk,
     };
@@ -3672,6 +3678,7 @@
   let stackSuspended = false;
   let resumeObserver = null;
   let resumeTimer = null;
+  let suspendedProgress = { index: -1, noteId: null };
 
   function resumeStackView() {
     if (!stackSuspended) return;
@@ -3684,21 +3691,62 @@
       clearInterval(resumeTimer);
       resumeTimer = null;
     }
+
+    // 1. 恢复宿主容器全屏尺寸与交互能力
+    if (state.els && state.els.host) {
+      state.els.host.style.width = '100vw';
+      state.els.host.style.height = '100vh';
+      state.els.host.style.pointerEvents = 'auto';
+    }
+
+    // 2. 恢复遮罩层与叠卡弹窗显示
     const overlay = (stackState.els && stackState.els.overlay) || $('#rn-stack-overlay');
     if (overlay) {
       overlay.style.display = '';
       overlay.classList.remove('rn-stack-suspended');
+      overlay.classList.add('rn-open');
     }
-    if (stackState.open) {
-      renderStackCard();
-      try { window.focus(); } catch (e) {}
+
+    // 3. 恢复 stackState.open 状态
+    stackState.open = true;
+
+    // 4. 精确恢复当前卡片处理进度：优先通过 noteId 定位卡片下标
+    if (Array.isArray(stackState.list) && stackState.list.length > 0) {
+      if (suspendedProgress.noteId) {
+        const found = stackState.list.findIndex(function (n) { return n.id === suspendedProgress.noteId; });
+        if (found !== -1) {
+          stackState.index = found;
+        } else if (suspendedProgress.index >= 0 && suspendedProgress.index < stackState.list.length) {
+          stackState.index = suspendedProgress.index;
+        }
+      } else if (suspendedProgress.index >= 0 && suspendedProgress.index < stackState.list.length) {
+        stackState.index = suspendedProgress.index;
+      }
     }
+
+    renderStackCard();
+
+    try {
+      if (overlay) overlay.focus();
+    } catch (e) {}
   }
 
   function suspendStackViewAndPreview(noteId, noteUrl) {
     if (!noteId) return;
 
     stackSuspended = true;
+    suspendedProgress = {
+      index: stackState.index,
+      noteId: (stackState.list && stackState.list[stackState.index] && stackState.list[stackState.index].id) || noteId,
+    };
+
+    // 释放宿主容器占位，确保不遮挡底层原生详情弹窗的任何点击
+    if (state.els && state.els.host) {
+      state.els.host.style.width = '0';
+      state.els.host.style.height = '0';
+      state.els.host.style.pointerEvents = 'none';
+    }
+
     const overlay = (stackState.els && stackState.els.overlay) || $('#rn-stack-overlay');
     if (overlay) {
       overlay.style.display = 'none';
@@ -3721,11 +3769,18 @@
       resumeTimer = null;
     }
 
+    let modalSeen = false;
+
     function checkDetailClosed() {
       if (!stackSuspended) return true;
-      const isExploring = location.pathname.indexOf('/explore') === 0 || location.pathname.indexOf('/discovery') === 0;
+      const isExploring = isModalOverlayRoute();
       const modalEl = document.querySelector('.note-detail-mask, [class*="note-detail-mask"], [class*="noteDetail"], [class*="note-container"]');
-      if (!isExploring && !modalEl) {
+      if (isExploring || modalEl) {
+        modalSeen = true;
+        return false;
+      }
+      // 如果曾经检测到原生弹窗出现过，或者经过轮询确认弹窗和路由均已消失，则无感恢复叠卡
+      if (modalSeen) {
         resumeStackView();
         return true;
       }
@@ -3750,10 +3805,10 @@
         if (stackSuspended) resumeStackView();
         return;
       }
-      if (pollCount > 2) {
+      if (pollCount > 1) {
         checkDetailClosed();
       }
-    }, 400);
+    }, 250);
   }
 
   /**
@@ -4003,6 +4058,19 @@
   function onUrlChange() {
     if (location.href !== lastKnownUrl) {
       lastKnownUrl = location.href;
+
+      if (stackSuspended) {
+        // 如果是在叠卡挂起预览期间发生的 URL 回滚（例如从 /explore/<id> 返回到 /user/profile），
+        // 立即触发 resumeStackView 并退出，坚决不重置卡片缓存！
+        resumeStackView();
+        return;
+      }
+
+      if (isModalOverlayRoute()) {
+        // 仍在原生详情弹窗路由中，跳过主页的 Tab 重置与 DOM 卡片重新读取
+        return;
+      }
+
       const detected = getPageActualTabType();
       if (detected && detected !== currentScannedTabType) {
         beginTabTransition(detected);
@@ -4027,21 +4095,24 @@
   }
 
   function tick() {
+    const isModalOverlay = isModalOverlayRoute();
     const onProfile = PROFILE_RE.test(location.pathname);
     if (onProfile && !state.mounted) {
       mount();
-    } else if (!onProfile && state.mounted) {
+    } else if (!onProfile && !stackSuspended && !isModalOverlay && state.mounted) {
       unmount();
     }
-    if (onProfile && state.mounted) {
-      onUrlChange();
-      syncModeWithActiveTab();
-      if (!isOwnNotesPage() && !tabTransitionLock) {
-        if (syncDomCardsToCandidates()) {
-          broadcastState();
-          if (stackState.open) syncStackListToFilter();
+    if ((onProfile || (state.mounted && (stackSuspended || isModalOverlay))) && state.mounted) {
+      if (!stackSuspended && !isModalOverlay) {
+        onUrlChange();
+        syncModeWithActiveTab();
+        if (!isOwnNotesPage() && !tabTransitionLock) {
+          if (syncDomCardsToCandidates()) {
+            broadcastState();
+            if (stackState.open) syncStackListToFilter();
+          }
+          refreshPageCards();
         }
-        refreshPageCards();
       }
     }
   }

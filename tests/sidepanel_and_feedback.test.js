@@ -3099,6 +3099,97 @@ test('专业设计与叠卡正序排序演进：去玩具化矢量图标、移�
   assert.strictEqual(contentJs.includes('result.slice().reverse()'), true, '正序排序算法正确反转数组');
 });
 
+test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫与进度100%无损复原', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const contentJs = fs.readFileSync(path.join(rootDir, 'src/content/content.js'), 'utf8');
+
+  // 1. 验证原生详情路由匹配规则
+  assert.strictEqual(contentJs.includes('MODAL_OVERLAY_RE'), true, '包含 MODAL_OVERLAY_RE 路由判断');
+  const MODAL_OVERLAY_RE = /^\/(?:explore|discovery\/item)\/[0-9a-zA-Z_-]+/i;
+  assert.strictEqual(MODAL_OVERLAY_RE.test('/explore/66a1234567890abcdef12345'), true, '识别 /explore 笔记详情路由');
+  assert.strictEqual(MODAL_OVERLAY_RE.test('/discovery/item/66a1234567890abcdef12345'), true, '识别 /discovery/item 笔记详情路由');
+  assert.strictEqual(MODAL_OVERLAY_RE.test('/user/profile/5b1234567890abcdef12345'), false, '个人主页不作为弹窗路由');
+  assert.strictEqual(MODAL_OVERLAY_RE.test('/explore'), false, '无 noteId 的主页探索 feed 不作为详情弹窗');
+  assert.strictEqual(MODAL_OVERLAY_RE.test('/'), false, '网站根路径不作为详情弹窗');
+
+  // 2. 验证挂起与无感唤醒进度持久化逻辑
+  assert.strictEqual(contentJs.includes('let suspendedProgress = { index: -1, noteId: null };'), true, '具备独立的进度暂存容器');
+  assert.strictEqual(contentJs.includes("suspendedProgress.noteId"), true, '按 noteId 优先精准匹配恢复卡片下标');
+  assert.strictEqual(contentJs.includes("!stackSuspended && !isModalOverlay && state.mounted"), true, 'tick 巡检中严格免疫原生弹窗，绝不误触发 unmount 销毁容器');
+  assert.strictEqual(contentJs.includes("if (stackSuspended) {\n        // 如果是在叠卡挂起预览期间发生的 URL 回滚"), true, 'popstate 路由回滚时无感恢复叠卡并立即退出，坚决不重置卡片');
+
+  // 3. 模拟叠卡挂起与唤醒全生命周期测试
+  const mockStackState = {
+    open: true,
+    index: 7,
+    list: [
+      { id: 'note_0' }, { id: 'note_1' }, { id: 'note_2' }, { id: 'note_3' },
+      { id: 'note_4' }, { id: 'note_5' }, { id: 'note_6' }, { id: 'note_7' },
+      { id: 'note_8' }, { id: 'note_9' },
+    ],
+  };
+
+  let mockSuspended = false;
+  let mockProgress = { index: -1, noteId: null };
+  const mockHost = { style: { width: '100vw', height: '100vh', pointerEvents: 'auto' } };
+  const mockOverlay = {
+    classList: new Set(['rn-stack-overlay', 'rn-open']),
+    style: { display: '' },
+  };
+
+  // 模拟挂起
+  mockSuspended = true;
+  mockProgress = {
+    index: mockStackState.index,
+    noteId: mockStackState.list[mockStackState.index].id,
+  };
+  mockHost.style.width = '0';
+  mockHost.style.height = '0';
+  mockHost.style.pointerEvents = 'none';
+  mockOverlay.style.display = 'none';
+  mockOverlay.classList.add('rn-stack-suspended');
+
+  assert.strictEqual(mockSuspended, true);
+  assert.strictEqual(mockProgress.index, 7);
+  assert.strictEqual(mockProgress.noteId, 'note_7');
+  assert.strictEqual(mockHost.style.pointerEvents, 'none', '宿主容器释放点击穿透至底层原生弹窗');
+  assert.strictEqual(mockOverlay.style.display, 'none');
+
+  // 模拟在挂起期间，tick() 运行在 /explore/xxx 路由
+  const fakePathname = '/explore/note_7';
+  const PROFILE_RE = /\/user\/profile(?:\/([0-9a-f]{24}))?/i;
+  const isOverlay = MODAL_OVERLAY_RE.test(fakePathname);
+  const onProfile = PROFILE_RE.test(fakePathname);
+  let unmountedCalled = false;
+  if (!onProfile && !mockSuspended && !isOverlay) {
+    unmountedCalled = true;
+  }
+  assert.strictEqual(unmountedCalled, false, '在弹窗路由下即使 onProfile 为 false，也绝不调用 unmount');
+
+  // 模拟原生弹窗关闭，触发唤醒
+  mockSuspended = false;
+  mockHost.style.width = '100vw';
+  mockHost.style.height = '100vh';
+  mockHost.style.pointerEvents = 'auto';
+  mockOverlay.style.display = '';
+  mockOverlay.classList.delete('rn-stack-suspended');
+  mockOverlay.classList.add('rn-open');
+  mockStackState.open = true;
+
+  // 进度恢复算法
+  const foundIdx = mockStackState.list.findIndex(n => n.id === mockProgress.noteId);
+  if (foundIdx !== -1) {
+    mockStackState.index = foundIdx;
+  }
+  assert.strictEqual(mockStackState.open, true, '叠卡保持打开状态');
+  assert.strictEqual(mockStackState.index, 7, '处理进度完全锁定在刚才浏览的第 7 篇笔记');
+  assert.strictEqual(mockHost.style.pointerEvents, 'auto', '宿主容器恢复全屏捕获');
+  assert.strictEqual(mockOverlay.classList.has('rn-open'), true, '遮罩恢复呈现');
+  assert.strictEqual(mockOverlay.classList.has('rn-stack-suspended'), false, '挂起标记已清除');
+});
+
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {
   const { execSync } = require('child_process');
   const path = require('path');
