@@ -3341,6 +3341,10 @@ test('情感化设计、断舍离微语录与彩蛋里程碑视觉动效系统',
   assert.strictEqual(contentJs.includes("C.checkMilestone"), true, '核心引擎检测里程碑跨越');
   assert.strictEqual(contentJs.includes("RN_MILESTONE_UNLOCKED"), true, '达成里程碑向全局广播事件');
   assert.strictEqual(sidepanelJs.includes("RN_MILESTONE_UNLOCKED"), true, '侧边栏监听里程碑解锁广播');
+
+  // 7. 赞赏与设置页真实开发者的温度（真诚与连接）
+  assert.strictEqual(sidepanelHtml.includes('3000+ 篇收藏夹逼疯的用户'), true, '设置面板包含独立开发者的温度心声');
+  assert.strictEqual(sidepanelHtml.includes('乌龙茶'), true, '赞赏文案采用温暖不市侩的乌龙茶意向');
 });
 
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {
