@@ -105,11 +105,41 @@ function ensurePortConnection(tabId) {
 
 let isInjecting = false;
 
+let lastProfileTabId = null;
+
+function isNotePreviewTab(tab) {
+  if (!tab) return false;
+  const url = tab.url || tab.pendingUrl || '';
+  if (!url) return false;
+  return /xiaohongshu\.com\/(?:explore|discovery\/item|404)\b/i.test(url);
+}
+
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (tabs && tabs[0]) return tabs[0];
-  const allTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  return allTabs && allTabs[0] ? allTabs[0] : null;
+  let candidate = (tabs && tabs[0]) || null;
+  if (!candidate) {
+    const allTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    candidate = (allTabs && allTabs[0]) || null;
+  }
+
+  // 核心防线：如果当前获得焦点的标签页是笔记预览弹窗，且之前已建立过个人主页连接，则坚决锁定在个人主页
+  if (candidate && isNotePreviewTab(candidate) && lastProfileTabId) {
+    try {
+      const profileTab = await chrome.tabs.get(lastProfileTabId);
+      if (profileTab && profileTab.url && /xiaohongshu\.com\/user\/profile/i.test(profileTab.url)) {
+        return profileTab;
+      }
+    } catch (e) {
+      lastProfileTabId = null;
+    }
+  }
+
+  // 记录合法的个人主页标签 ID
+  if (candidate && candidate.url && /xiaohongshu\.com\/user\/profile/i.test(candidate.url)) {
+    lastProfileTabId = candidate.id;
+  }
+
+  return candidate;
 }
 
 async function sendToTab(type, data) {
@@ -1654,7 +1684,14 @@ function bindEvents() {
   });
 
   // 监听标签页切换与更新
-  chrome.tabs.onActivated.addListener(function (activeInfo) {
+  chrome.tabs.onActivated.addListener(async function (activeInfo) {
+    try {
+      const tab = await chrome.tabs.get(activeInfo.tabId);
+      if (tab && isNotePreviewTab(tab) && lastProfileTabId) {
+        // 激活的是笔记预览小弹窗：忽略此事件，坚决不把侧边栏切离个人主页
+        return;
+      }
+    } catch (e) {}
     activeTabId = activeInfo.tabId;
     ensurePortConnection(activeTabId);
     requestState();
