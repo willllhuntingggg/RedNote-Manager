@@ -106,12 +106,17 @@ function ensurePortConnection(tabId) {
 let isInjecting = false;
 
 let lastProfileTabId = null;
+let popupOpeningTimer = 0;
 
 function isNotePreviewTab(tab) {
   if (!tab) return false;
   const url = tab.url || tab.pendingUrl || '';
-  if (!url) return false;
-  return /xiaohongshu\.com\/(?:explore|discovery\/item|404)\b/i.test(url);
+  if (/xiaohongshu\.com\/(?:explore|discovery\/item|404)\b/i.test(url)) return true;
+  // 在主动呼出弹窗的 2 秒窗口期内，任何初生空白页或未就绪页面均视为主体弹窗
+  if (Date.now() - popupOpeningTimer < 2000) {
+    if (!url || url === 'about:blank' || url.startsWith('chrome://')) return true;
+  }
+  return false;
 }
 
 async function getActiveTab() {
@@ -122,15 +127,27 @@ async function getActiveTab() {
     candidate = (allTabs && allTabs[0]) || null;
   }
 
-  // 核心防线：如果当前获得焦点的标签页是笔记预览弹窗，且之前已建立过个人主页连接，则坚决锁定在个人主页
-  if (candidate && isNotePreviewTab(candidate) && lastProfileTabId) {
-    try {
-      const profileTab = await chrome.tabs.get(lastProfileTabId);
-      if (profileTab && profileTab.url && /xiaohongshu\.com\/user\/profile/i.test(profileTab.url)) {
-        return profileTab;
+  // 核心防线：如果当前获得焦点的标签页是笔记预览弹窗或 popup 独立小窗，坚决锁定在个人主页
+  if (candidate && lastProfileTabId) {
+    let isPopup = isNotePreviewTab(candidate);
+    if (!isPopup && candidate.windowId) {
+      try {
+        const win = await chrome.windows.get(candidate.windowId);
+        if (win && win.type === 'popup') {
+          isPopup = true;
+        }
+      } catch (e) {}
+    }
+
+    if (isPopup) {
+      try {
+        const profileTab = await chrome.tabs.get(lastProfileTabId);
+        if (profileTab && profileTab.url && /xiaohongshu\.com\/user\/profile/i.test(profileTab.url)) {
+          return profileTab;
+        }
+      } catch (e) {
+        lastProfileTabId = null;
       }
-    } catch (e) {
-      lastProfileTabId = null;
     }
   }
 
@@ -269,7 +286,24 @@ function getFilteredVisible(candidates, query, tagFilter) {
   return list;
 }
 
+let disconnectTimer = null;
+
 function renderDisconnected(message) {
+  // 如果侧边栏当前已有正常展示的主页数据（lastState 存在），坚决不进行瞬间白屏重置！
+  // 启动 500ms 宽容防抖缓冲，平滑过滤初生期 about:blank 与瞬间焦点切换导致的假断开
+  if (lastState) {
+    if (!disconnectTimer) {
+      disconnectTimer = setTimeout(function () {
+        disconnectTimer = null;
+        executeRenderDisconnected(message);
+      }, 500);
+    }
+    return;
+  }
+  executeRenderDisconnected(message);
+}
+
+function executeRenderDisconnected(message) {
   lastState = null;
   if ($('rn-s-cand')) $('rn-s-cand').textContent = '–';
   if ($('rn-s-sel')) $('rn-s-sel').textContent = '–';
@@ -337,6 +371,10 @@ function showTabFollowHint(targetMode) {
 
 function applyState(st) {
   if (!st) return;
+  if (disconnectTimer) {
+    clearTimeout(disconnectTimer);
+    disconnectTimer = null;
+  }
   lastState = st;
 
   const s = st.settings || {};
@@ -1416,6 +1454,7 @@ function bindEvents() {
 
   function openNotePopup(targetUrl) {
     if (!targetUrl || targetUrl === '#' || targetUrl.startsWith('javascript:')) return;
+    popupOpeningTimer = Date.now();
     const width = 540;
     const height = Math.min(880, Math.round((window.screen.availHeight || 800) * 0.9));
     const left = Math.max(0, Math.round(((window.screen.availWidth || 1200) - width) / 2));
@@ -1687,9 +1726,10 @@ function bindEvents() {
   chrome.tabs.onActivated.addListener(async function (activeInfo) {
     try {
       const tab = await chrome.tabs.get(activeInfo.tabId);
-      if (tab && isNotePreviewTab(tab) && lastProfileTabId) {
-        // 激活的是笔记预览小弹窗：忽略此事件，坚决不把侧边栏切离个人主页
-        return;
+      if (tab && lastProfileTabId) {
+        if (isNotePreviewTab(tab)) return;
+        const win = await chrome.windows.get(tab.windowId);
+        if (win && win.type === 'popup') return;
       }
     } catch (e) {}
     activeTabId = activeInfo.tabId;
