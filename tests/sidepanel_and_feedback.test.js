@@ -1213,6 +1213,14 @@ test('笔记卡片与侧边栏支持查看原文外链生成与方案A原生弹�
   // 2. 按住 Cmd/Ctrl 点击：保留打开新标签页能力
   handlePreviewClick({ metaKey: true, ctrlKey: false }, noteId, fullUrl);
   assert.strictEqual(openedTabUrl, fullUrl);
+
+  // 3. 验证叠卡内查看原文同样支持原生弹窗预览与挂起复原机制
+  const fs = require('fs');
+  const path = require('path');
+  const contentCode = fs.readFileSync(path.resolve(__dirname, '../src/content/content.js'), 'utf8');
+  assert.ok(contentCode.includes('suspendStackViewAndPreview'), '支持叠卡速览挂起并唤起原生弹窗');
+  assert.ok(contentCode.includes('resumeStackView'), '支持关闭原生弹窗后自动复原叠卡状态');
+  assert.ok(contentCode.includes('handleStackPreview'), '查看原文与标题点击统一绑定原生轻预览事件流');
 });
 
 test('页面卡片入库保留完整 candidates 数据源，且在已处理状态下支持按需切换展示', () => {

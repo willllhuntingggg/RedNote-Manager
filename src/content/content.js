@@ -1753,7 +1753,7 @@
     }, true);
 
     const onGlobalKeydown = function (ev) {
-      if (stackState.open) {
+      if (stackState.open && !stackSuspended) {
         if (ev.key === 'Escape' || ev.key === 'Esc' || ev.keyCode === 27) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -2125,6 +2125,9 @@
   }
 
   function closeStackView() {
+    if (stackSuspended) {
+      resumeStackView();
+    }
     const processed = stackState.sessionProcessed || 0;
     stackState.open = false;
     stackState.working = false;
@@ -2308,12 +2311,13 @@
       stackState.els.empty.style.display = 'block';
     }
 
-    // 更新查看原文链接按钮（必须附带安全令牌 xsec_token 才能在新标签页直接查看原文并绕过扫码拦截）
+    // 更新查看原文链接按钮
     const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
     const noteUrl = C.buildNoteUrl(note.url || note.id, token);
     if (stackState.els.btnOpen) {
       if (noteUrl) {
         stackState.els.btnOpen.href = noteUrl;
+        stackState.els.btnOpen.title = '即时预览（呼出原生详情弹窗；按住 Cmd/Ctrl 在新标签页打开）';
         stackState.els.btnOpen.style.display = 'inline-flex';
       } else {
         stackState.els.btnOpen.style.display = 'none';
@@ -2323,7 +2327,7 @@
     // 更新文本信息
     stackState.els.title.textContent = note.title || '未命名笔记';
     if (noteUrl) {
-      stackState.els.title.title = '点击可在新标签页查看笔记原文（' + noteUrl + '）';
+      stackState.els.title.title = '即时预览（呼出原生详情弹窗；按住 Cmd/Ctrl 在新标签页打开）';
     } else {
       stackState.els.title.removeAttribute('title');
     }
@@ -3456,36 +3460,29 @@
       btnUndo: $('#rn-stack-undo', root),
     };
 
+    function handleStackPreview(ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      const note = stackState.list[stackState.index];
+      if (note && note.id) {
+        const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
+        const url = C.buildNoteUrl(note.url || note.id, token);
+        if (ev.metaKey || ev.ctrlKey) {
+          if (url) window.open(url, '_blank', 'noopener');
+          return;
+        }
+        suspendStackViewAndPreview(note.id, url);
+      }
+    }
+
     const openBtn = $('#rn-card-open-btn', root);
     if (openBtn) {
-      openBtn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        ev.preventDefault();
-        const note = stackState.list[stackState.index];
-        if (note && note.id) {
-          const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
-          const url = C.buildNoteUrl(note.url || note.id, token);
-          if (url) {
-            window.open(url, '_blank', 'noopener');
-          }
-        }
-      });
+      openBtn.addEventListener('click', handleStackPreview);
     }
 
     const titleEl = $('#rn-card-title', root);
     if (titleEl) {
-      titleEl.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        ev.preventDefault();
-        const note = stackState.list[stackState.index];
-        if (note && note.id) {
-          const token = note.xsecToken || (state.xsecTokens && state.xsecTokens[note.id]) || '';
-          const url = C.buildNoteUrl(note.url || note.id, token);
-          if (url) {
-            window.open(url, '_blank', 'noopener');
-          }
-        }
-      });
+      titleEl.addEventListener('click', handleStackPreview);
     }
 
     $('#rn-bar-clear', root).addEventListener('click', function (ev) {
@@ -3672,16 +3669,103 @@
     } catch (e) { /* 忽略 */ }
   }
 
+  let stackSuspended = false;
+  let resumeObserver = null;
+  let resumeTimer = null;
+
+  function resumeStackView() {
+    if (!stackSuspended) return;
+    stackSuspended = false;
+    if (resumeObserver) {
+      resumeObserver.disconnect();
+      resumeObserver = null;
+    }
+    if (resumeTimer) {
+      clearInterval(resumeTimer);
+      resumeTimer = null;
+    }
+    const overlay = (stackState.els && stackState.els.overlay) || $('#rn-stack-overlay');
+    if (overlay) {
+      overlay.style.display = '';
+      overlay.classList.remove('rn-stack-suspended');
+    }
+    if (stackState.open) {
+      renderStackCard();
+      try { window.focus(); } catch (e) {}
+    }
+  }
+
+  function suspendStackViewAndPreview(noteId, noteUrl) {
+    if (!noteId) return;
+
+    stackSuspended = true;
+    const overlay = (stackState.els && stackState.els.overlay) || $('#rn-stack-overlay');
+    if (overlay) {
+      overlay.style.display = 'none';
+      overlay.classList.add('rn-stack-suspended');
+    }
+
+    const success = previewNote(noteId, noteUrl, true);
+    if (!success) {
+      resumeStackView();
+      if (noteUrl) window.open(noteUrl, '_blank', 'noopener');
+      return;
+    }
+
+    if (resumeObserver) {
+      resumeObserver.disconnect();
+      resumeObserver = null;
+    }
+    if (resumeTimer) {
+      clearInterval(resumeTimer);
+      resumeTimer = null;
+    }
+
+    function checkDetailClosed() {
+      if (!stackSuspended) return true;
+      const isExploring = location.pathname.indexOf('/explore') === 0 || location.pathname.indexOf('/discovery') === 0;
+      const modalEl = document.querySelector('.note-detail-mask, [class*="note-detail-mask"], [class*="noteDetail"], [class*="note-container"]');
+      if (!isExploring && !modalEl) {
+        resumeStackView();
+        return true;
+      }
+      return false;
+    }
+
+    resumeObserver = new MutationObserver(function () {
+      checkDetailClosed();
+    });
+    try {
+      resumeObserver.observe(document.body, { childList: true, subtree: true });
+    } catch (e) {}
+
+    let pollCount = 0;
+    resumeTimer = setInterval(function () {
+      pollCount++;
+      if (!stackSuspended || pollCount > 1500) {
+        if (resumeTimer) {
+          clearInterval(resumeTimer);
+          resumeTimer = null;
+        }
+        if (stackSuspended) resumeStackView();
+        return;
+      }
+      if (pollCount > 2) {
+        checkDetailClosed();
+      }
+    }, 400);
+  }
+
   /**
    * 呼出小红书原生详情弹窗（方案 A：无感轻预览）
    * 优先匹配当前页面 DOM 中已挂载的卡片并模拟真实用户点击，
    * 若卡片已被虚拟列表回收则就地派发同域链接点击触发单页路由。
    */
-  function previewNote(noteId, noteUrl) {
+  function previewNote(noteId, noteUrl, fromStack) {
     if (!noteId) return false;
 
-    // 若当前叠卡弹窗处于打开状态，先平滑收起叠卡，避免弹窗重叠
-    if (stackState.open) {
+    // 若当前叠卡弹窗处于打开状态且不是挂起模式，先平滑收起叠卡，避免弹窗重叠
+    if (stackState.open && !fromStack) {
       closeStackView();
     }
 

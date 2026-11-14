@@ -312,6 +312,11 @@ globalThis.RNStyle = `
     backdrop-filter: blur(14px) !important;
     -webkit-backdrop-filter: blur(14px) !important;
   }
+  .rn-stack-overlay.rn-stack-suspended {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
 
   .rn-stack-box {
     position: relative !important;
