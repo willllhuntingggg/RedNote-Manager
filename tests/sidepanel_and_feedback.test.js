@@ -357,7 +357,7 @@ test('叠卡速览随机回顾：Fisher-Yates 无放回洗牌队列（本轮 100
   // 1. 验证源码中包含 shuffleList 洗牌算法实现
   assert.strictEqual(contentJs.includes('function shuffleList(arr) {'), true, '包含 Fisher-Yates 洗牌算法函数');
   assert.strictEqual(contentJs.includes("if (stackState.orderMode === 'random') {"), true, '随机模式应用洗牌队列');
-  assert.strictEqual(contentJs.includes("showToast('🎉 本轮 ' + total + ' 篇已全部回顾完毕，已为您开启新一轮随机洗牌');"), true, '满轮后给出轻提示并开启新一轮');
+  assert.strictEqual(contentJs.includes("C.getEmotionQuote('roundEnd')"), true, '满轮后给出情感化温情轻提示并开启新一轮');
 
   // 2. 模拟洗牌算法无损性与零重复
   function shuffle(arr) {
@@ -3295,6 +3295,47 @@ test('叠卡速览轻预览状态机：原生弹窗挂起、生命周期免疫�
   assert.strictEqual(contentJs.includes("C.buildNoteUrl(noteId, token)"), true, '视口外未加载卡片构建携带安全 token 的完整标准外链');
   assert.strictEqual(contentJs.includes("setupPreviewModalWatcher"), true, '启动原生弹窗关闭守卫与监听');
   assert.strictEqual(contentJs.includes("activeModalPreview || stackSuspended"), true, '右侧列表与叠卡预览统一享受防跳首页保护与生命周期免疫');
+});
+
+test('情感化设计、断舍离微语录与彩蛋里程碑视觉动效系统', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const sidepanelHtml = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.html'), 'utf8');
+  const sidepanelJs = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.js'), 'utf8');
+  const sidepanelCss = fs.readFileSync(path.join(rootDir, 'src/sidepanel/sidepanel.css'), 'utf8');
+  const contentJs = fs.readFileSync(path.join(rootDir, 'src/content/content.js'), 'utf8');
+  const styleJs = fs.readFileSync(path.join(rootDir, 'src/content/style.js'), 'utf8');
+
+  // 1. 侧边栏与页面端均具备成就里程碑彩蛋弹窗及纯 CSS 撒花微粒子系统
+  assert.strictEqual(sidepanelHtml.includes('id="rn-milestone-modal"'), true, '侧边栏具备成就里程碑弹窗');
+  assert.strictEqual(sidepanelHtml.includes('id="rn-confetti"'), true, '侧边栏具备撒花容器');
+  assert.strictEqual(sidepanelHtml.includes('id="rn-companion-banner"'), true, '侧边栏底部面板具备温情陪伴微语录');
+  assert.strictEqual(sidepanelCss.includes('.rn-milestone-card'), true, '包含里程碑卡片高质感样式');
+  assert.strictEqual(sidepanelCss.includes('@keyframes confettiFall'), true, '包含纯 CSS 撒花关键帧动画');
+  assert.strictEqual(sidepanelCss.includes('@keyframes badgePop'), true, '包含徽章弹性放大弹性动画');
+
+  // 2. 页面端 Shadow DOM 模态框与动画系统
+  assert.strictEqual(contentJs.includes('rn-page-milestone-overlay'), true, '页面端注入专属成就里程碑浮层');
+  assert.strictEqual(styleJs.includes('.rn-page-milestone-overlay'), true, '页面端具备里程碑遮罩样式');
+  assert.strictEqual(styleJs.includes('@keyframes rnConfettiFall'), true, '页面端具备撒花动画');
+
+  // 3. 初始空状态共鸣设计与随机文案抽取
+  assert.strictEqual(sidepanelJs.includes("RNCore.getEmotionQuote('empty', mode)"), true, '空状态支持随机抽取走心共鸣语录');
+  assert.strictEqual(sidepanelCss.includes('.rn-empty.rn-empty-emotional'), true, '空状态应用共鸣卡片美学样式');
+
+  // 4. 批量执行与冷却中的温情陪伴微语录轮播
+  assert.strictEqual(sidepanelJs.includes('startCompanionRotation'), true, '执行时启动陪伴语录轮播');
+  assert.strictEqual(contentJs.includes("C.getEmotionQuote('cooldown')"), true, '批量冷却时输出温情陪伴文案');
+
+  // 5. 叠卡左滑/右滑按钮文案保持原样（不制造歧义），同时满轮时随机给出温情回顾语
+  assert.strictEqual(contentJs.includes("C.getEmotionQuote('roundEnd')"), true, '叠卡满轮换批时随机给出温情回顾文案');
+  assert.strictEqual(contentJs.includes('跳过'), true, '叠卡左滑跳过文案原汁原味保持');
+
+  // 6. 批量完成时输出断舍离成就结算，跨越阈值触发 10/20/50/100/500/1000 彩蛋
+  assert.strictEqual(contentJs.includes("C.checkMilestone"), true, '核心引擎检测里程碑跨越');
+  assert.strictEqual(contentJs.includes("RN_MILESTONE_UNLOCKED"), true, '达成里程碑向全局广播事件');
+  assert.strictEqual(sidepanelJs.includes("RN_MILESTONE_UNLOCKED"), true, '侧边栏监听里程碑解锁广播');
 });
 
 test('工程级质量防线：所有核心脚本必须通过 Node 严密语法静态编译校验 (杜绝异步孤立块与未捕获语法错误)', () => {

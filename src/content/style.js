@@ -883,4 +883,159 @@ globalThis.RNStyle = `
   .rn-stack-icon-btn.rn-active-collected svg {
     filter: drop-shadow(0 2px 6px rgba(255, 184, 0, 0.5)) !important;
   }
+
+  /* ================= 成就里程碑彩蛋弹窗 (Milestone Modal in Page) ================= */
+  .rn-page-milestone-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important;
+    background: rgba(10, 10, 14, 0.78) !important;
+    display: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 0.25s ease !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif !important;
+    user-select: none !important;
+  }
+  .rn-page-milestone-overlay.rn-open {
+    display: flex !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+  }
+  .rn-page-milestone-card {
+    position: relative !important;
+    width: 340px !important;
+    max-width: calc(100vw - 32px) !important;
+    background: #1e1e24 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 20px !important;
+    padding: 26px 22px 22px !important;
+    text-align: center !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+    overflow: hidden !important;
+    animation: rnMilestonePopIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  .rn-page-milestone-badge {
+    font-size: 54px !important;
+    line-height: 1 !important;
+    margin: 4px auto 12px !important;
+    display: inline-block !important;
+    filter: drop-shadow(0 6px 20px rgba(245, 158, 11, 0.5)) !important;
+    animation: rnBadgeBounce 0.65s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+  }
+  .rn-page-milestone-tag {
+    display: inline-block !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: 1px !important;
+    padding: 3px 10px !important;
+    border-radius: 12px !important;
+    background: rgba(245, 158, 11, 0.2) !important;
+    color: #f59e0b !important;
+    margin-bottom: 8px !important;
+    text-transform: uppercase !important;
+  }
+  .rn-page-milestone-title {
+    font-size: 20px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    margin: 0 0 6px !important;
+  }
+  .rn-page-milestone-desc {
+    font-size: 13px !important;
+    color: rgba(255, 255, 255, 0.75) !important;
+    line-height: 1.5 !important;
+    margin-bottom: 10px !important;
+  }
+  .rn-page-milestone-quote {
+    font-size: 12px !important;
+    color: #e2e8f0 !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    padding: 10px 14px !important;
+    border-radius: 10px !important;
+    margin: 12px 0 16px !important;
+    line-height: 1.45 !important;
+    border-left: 3px solid #f59e0b !important;
+    font-style: italic !important;
+    text-align: left !important;
+  }
+  .rn-page-milestone-stats {
+    font-size: 12px !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+    margin-bottom: 18px !important;
+  }
+  .rn-page-milestone-stats b {
+    color: #ff2442 !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+  .rn-page-milestone-btn {
+    all: unset !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    width: 100% !important;
+    padding: 10px 0 !important;
+    border-radius: 12px !important;
+    background: linear-gradient(135deg, #ff2442, #ff4d6d) !important;
+    color: #ffffff !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+    box-shadow: 0 4px 14px rgba(255, 36, 66, 0.4) !important;
+    transition: transform 0.15s ease, opacity 0.15s ease !important;
+  }
+  .rn-page-milestone-btn:hover {
+    transform: translateY(-1px) !important;
+    opacity: 0.95 !important;
+  }
+  .rn-page-milestone-btn:active {
+    transform: scale(0.98) !important;
+  }
+  .rn-page-milestone-close {
+    all: unset !important;
+    cursor: pointer !important;
+    position: absolute !important;
+    top: 14px !important;
+    right: 14px !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    font-size: 18px !important;
+    line-height: 28px !important;
+    text-align: center !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+  }
+  .rn-page-milestone-close:hover {
+    background: rgba(255, 255, 255, 0.18) !important;
+    color: #fff !important;
+  }
+  .rn-page-confetti {
+    position: absolute !important;
+    top: -12px !important;
+    width: 7px !important;
+    height: 9px !important;
+    border-radius: 2px !important;
+    opacity: 0.9 !important;
+    animation: rnConfettiFall 2.4s ease-out forwards !important;
+  }
+  @keyframes rnMilestonePopIn {
+    0% { transform: scale(0.85); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes rnBadgeBounce {
+    0% { transform: scale(0.3) rotate(-15deg); opacity: 0; }
+    60% { transform: scale(1.18) rotate(5deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  @keyframes rnConfettiFall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(320px) rotate(720deg); opacity: 0; }
+  }
 `;

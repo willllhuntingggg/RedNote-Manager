@@ -83,6 +83,9 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
             </button>
           </div>
+          <div class="rn-companion-banner" id="rn-companion-banner" hidden>
+            <span class="rn-companion-text" id="rn-companion-text">正在轻柔处理中… 给小红书服务器喘口气的机会 🍃</span>
+          </div>
           <div class="rn-log-collapse" id="rn-log-collapse">
             <div class="rn-log-header">
               <span class="rn-log-title">操作日志</span>
@@ -212,6 +215,25 @@
 
         <div class="rn-note">
           在小红书页面卡片左上角可以直接勾选（按住 Shift 支持区间多选）。真实操作已包含安全限速。
+        </div>
+      </div>
+    </div>
+
+    <!-- 成就里程碑彩蛋弹窗 -->
+    <div class="rn-modal-overlay rn-milestone-overlay" id="rn-milestone-modal" hidden>
+      <div class="rn-modal-card rn-milestone-card">
+        <div class="rn-confetti-container" id="rn-confetti"></div>
+        <button class="rn-modal-close" id="rn-milestone-close" type="button" title="关闭">&times;</button>
+        <div class="rn-milestone-body">
+          <div class="rn-badge-emblem" id="rn-m-badge">🌱</div>
+          <div class="rn-milestone-tag" id="rn-m-tag">MILESTONE 10</div>
+          <h3 class="rn-milestone-title" id="rn-m-title">初见轻盈</h3>
+          <div class="rn-milestone-desc" id="rn-m-desc">踏出数字断舍离的第一步，感觉真棒！</div>
+          <div class="rn-milestone-quote" id="rn-m-quote">“种一棵树最好的时间是十年前，其次是现在。”</div>
+          <div class="rn-milestone-stats">
+            已累计断舍离 <b id="rn-m-count">10</b> 篇笔记 🌿
+          </div>
+          <button class="rn-btn rn-primary rn-milestone-ok-btn" id="rn-milestone-ok" type="button">收下这份轻盈 ✨</button>
         </div>
       </div>
     </div>

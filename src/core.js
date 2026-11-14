@@ -460,6 +460,176 @@
     };
   }
 
+  /* ============================ 情感化文案与彩蛋里程碑 ============================ */
+
+  const MILESTONES = [
+    {
+      count: 10,
+      title: '初见轻盈',
+      badge: '🌱',
+      tag: 'MILESTONE 10',
+      desc: '踏出数字断舍离的第一步，感觉真棒！',
+      quotes: [
+        '“种一棵树最好的时间是十年前，其次是现在。”',
+        '开始给数字生活卸下一副小担子。',
+        '放下 10 个旧执念，迎来 10 份新清爽。',
+      ],
+    },
+    {
+      count: 20,
+      title: '告别囤积',
+      badge: '🍃',
+      tag: 'MILESTONE 20',
+      desc: '不再盲目收集，开始懂得选择与放下。',
+      quotes: [
+        '少即是多，好的生活不需要填得太满。',
+        '清空的是负累，留下的是热爱。',
+        '给自己的心腾出了一片清净天地。',
+      ],
+    },
+    {
+      count: 50,
+      title: '心境清朗',
+      badge: '🌿',
+      tag: 'MILESTONE 50',
+      desc: '给收藏夹洗了个痛快的热水澡，视野豁然开朗！',
+      quotes: [
+        '信息若不消化，就只是心智的尘埃。',
+        '半百断舍离，生活越来越有松弛感。',
+        '你的时间很贵，留给真正值得的人与事。',
+      ],
+    },
+    {
+      count: 100,
+      title: '极简践行者',
+      badge: '🏆',
+      tag: 'CENTURY 100',
+      desc: '破百断舍离！向成百个过往执念潇洒挥手。',
+      quotes: [
+        '恭喜达成破百里程碑！生活轻装上阵。',
+        '真正富足的心，从不依赖囤积来寻找安全感。',
+        '愿你在纷繁世界里，始终保持内心的澄澈与专注。',
+      ],
+    },
+    {
+      count: 500,
+      title: '数字生活大师',
+      badge: '🌟',
+      tag: 'MASTER 500',
+      desc: '重塑自己的信息流，心无杂物，专注所爱。',
+      quotes: [
+        '五百篇过往化作养分，你已掌握专注的艺术。',
+        '不被信息洪流裹挟，做自己生活的主人。',
+        '极简不是一无所有，而是把所有留给最爱。',
+      ],
+    },
+    {
+      count: 1000,
+      title: '千帆过尽·归于本心',
+      badge: '👑',
+      tag: 'LEGEND 1000',
+      desc: '千篇过客，留下的是生活，放下的是执念。',
+      quotes: [
+        '千帆过尽，不染纤尘。生活从此轻盈自在。',
+        '能放下千般执念的人，内心定有无垠山海。',
+        '数字世界里的清行者，向你致敬。',
+      ],
+    },
+  ];
+
+  const EMOTION_QUOTES = {
+    empty: {
+      uncollect: [
+        '「收藏了就等于学会了」—— 是不是也有很多灵感在箱底落灰？点击【读取】，一起唤醒它们吧 ☕',
+        '把过去的收藏翻出来晒晒太阳，留下真正喜欢的，其余的温柔告别 🌿',
+        '给数字生活做一次断舍离，腾出空间装下新的心动与灵感 ✨',
+        '有些攻略当时觉得必看，现在才发现生活早已有了自己的答案 📖',
+        '收藏夹是过去的愿望清单，今天来看看哪些已经变成了现实 🎈',
+      ],
+      unlike: [
+        '那些年随手点下的小红心，也是你过去某一刻的心动与好奇 ❤️',
+        '曾经让你眼前一亮的人和事，重温一下，看看今天的自己还会不会心动 💫',
+        '喜欢是当下的共鸣，清理是给现在的审美腾出新天地 🎈',
+        '点赞是给世界的掌声，偶尔回顾，也是在看一路走来的审美印记 ☕',
+        '曾经的心动已化作记忆，现在的你，期待着怎样的灵感火花？✨',
+      ],
+    },
+    cooldown: [
+      '正在轻柔处理中… 给小红书服务器喘口气的机会 🍃',
+      '断舍离就像打扫房间，慢慢来更干净 🧹',
+      '那些不再需要的内容，正在悄悄退场…',
+      '专注当下，把过去的负累一件件放下 ☕',
+      '生活向前走，腾出空间迎接更好的灵感 🌈',
+      '深呼吸一下，喝口水，马上就好 🌿',
+    ],
+    roundEnd: [
+      '🎉 这一轮旧念头已重温完毕。生活向前，记忆沉淀 🌿',
+      '✨ 岁月常新，翻过这一批旧笔记，心里是不是更轻盈了？',
+      '☕ 过去种下的灵感已重逢一轮，无论是去是留，都是最好的安排。',
+      '🎈 属于过去的一幕已翻篇，去开启下一批探索吧！',
+      '🍃 重温完毕！每一个保留与告别，都是更了解自己的过程。',
+    ],
+    batchDone: [
+      '✨ 已为你完成 {n} 次断舍离，小红书和生活都轻盈了一点点～',
+      '🌿 成功放下了 {n} 篇旧笔记，为新的灵感腾出空间！',
+      '☕ 这 {n} 个旧念头已化作生活养分，继续轻装向前走吧！',
+      '🍃 告别了 {n} 篇过往，信息流像刚整理完的桌面一样清爽。',
+      '🌱 断舍离不是失去，而是把最好的注意力留给当下的自己（已处理 {n} 篇）。',
+    ],
+  };
+
+  /**
+   * 检查是否达成新的彩蛋里程碑。
+   * @param {number} prevCount - 处理前的历史累计清理数
+   * @param {number} newCount - 处理后的历史累计清理数
+   * @param {Array<number>} unlocked - 已经解锁过的里程碑列表（例如 [10]）
+   * @returns {Object|null} 触发的新里程碑对象（若同时跨越多个，返回最高那个），未触发返回 null
+   */
+  function checkMilestone(prevCount, newCount, unlocked) {
+    const unlockedSet = new Set(Array.isArray(unlocked) ? unlocked : []);
+    const p = Math.max(0, Number(prevCount) || 0);
+    const n = Math.max(0, Number(newCount) || 0);
+    if (n <= p) return null;
+
+    let triggered = null;
+    for (let i = 0; i < MILESTONES.length; i++) {
+      const m = MILESTONES[i];
+      if (n >= m.count && !unlockedSet.has(m.count)) {
+        triggered = m;
+      }
+    }
+    return triggered;
+  }
+
+  /**
+   * 随机抽取指定场景的情感化文案。
+   * @param {string} category - 'empty' | 'cooldown' | 'roundEnd' | 'batchDone'
+   * @param {string|number} [subKeyOrN] - 子模式 ('uncollect'/'unlike') 或篇数 n
+   * @param {number} [n] - 篇数（当 category==='batchDone' 时传入）
+   * @param {Function} [rnd] - 随机数生成器（单测可用）
+   */
+  function getEmotionQuote(category, subKeyOrN, n, rnd) {
+    const r = typeof rnd === 'function' ? rnd : Math.random;
+    let list = [];
+    let countNum = 0;
+    if (category === 'empty') {
+      const mode = (typeof subKeyOrN === 'string' && subKeyOrN) ? subKeyOrN : 'uncollect';
+      list = (EMOTION_QUOTES.empty && EMOTION_QUOTES.empty[mode]) || EMOTION_QUOTES.empty.uncollect;
+    } else if (category === 'batchDone') {
+      list = EMOTION_QUOTES.batchDone || [];
+      countNum = Number(subKeyOrN || n) || 1;
+    } else {
+      list = EMOTION_QUOTES[category] || [];
+    }
+    if (!list.length) return '';
+    const idx = Math.floor(r() * list.length);
+    let text = list[idx] || list[0];
+    if (countNum > 0) {
+      text = text.replace(/\{n\}/g, String(countNum));
+    }
+    return text;
+  }
+
   return {
     MODES: MODES,
     DEFAULTS: DEFAULTS,
@@ -485,5 +655,9 @@
     formatDuration: formatDuration,
     summarize: summarize,
     findUndoTarget: findUndoTarget,
+    MILESTONES: MILESTONES,
+    EMOTION_QUOTES: EMOTION_QUOTES,
+    checkMilestone: checkMilestone,
+    getEmotionQuote: getEmotionQuote,
   };
 });

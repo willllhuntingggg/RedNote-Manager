@@ -263,3 +263,50 @@ test('findUndoTarget 能够清晰区分单篇撤销与批量撤销', () => {
   assert.strictEqual(tLegacy.type, 'single');
   assert.strictEqual(tLegacy.noteId, '777777777777777777777777');
 });
+
+test('情感化设计与彩蛋里程碑逻辑完整性', () => {
+  // 1. 里程碑门槛覆盖 10, 20, 50, 100, 500, 1000
+  const expectedThresholds = [10, 20, 50, 100, 500, 1000];
+  assert.deepStrictEqual(C.MILESTONES.map(m => m.count), expectedThresholds);
+
+  // 每个里程碑必须有清晰的称谓、徽章图标与走心名言列表
+  C.MILESTONES.forEach(m => {
+    assert.ok(m.title && m.title.length > 0);
+    assert.ok(m.badge && m.badge.length > 0);
+    assert.ok(m.desc && m.desc.length > 0);
+    assert.ok(Array.isArray(m.quotes) && m.quotes.length >= 2);
+  });
+
+  // 2. checkMilestone 触发判定
+  // 从 5 增长到 9：不触发
+  assert.strictEqual(C.checkMilestone(5, 9, []), null);
+  // 从 5 增长到 10：触发 10 篇里程碑
+  const m10 = C.checkMilestone(5, 10, []);
+  assert.notStrictEqual(m10, null);
+  assert.strictEqual(m10.count, 10);
+  assert.strictEqual(m10.title, '初见轻盈');
+
+  // 如果 10 已经被解锁过了，从 10 增长到 15：不触发
+  assert.strictEqual(C.checkMilestone(10, 15, [10]), null);
+
+  // 从 15 一口气处理了 40 篇达到 55 篇：跨越 20 和 50，返回最高达成的 50
+  const m50 = C.checkMilestone(15, 55, [10]);
+  assert.notStrictEqual(m50, null);
+  assert.strictEqual(m50.count, 50);
+
+  // 3. getEmotionQuote 随机文案测试
+  const emptyCollect = C.getEmotionQuote('empty', 'uncollect');
+  assert.ok(typeof emptyCollect === 'string' && emptyCollect.length > 5);
+
+  const emptyLike = C.getEmotionQuote('empty', 'unlike');
+  assert.ok(typeof emptyLike === 'string' && emptyLike.length > 5);
+
+  const cooldownQuote = C.getEmotionQuote('cooldown');
+  assert.ok(typeof cooldownQuote === 'string' && cooldownQuote.length > 5);
+
+  const roundEndQuote = C.getEmotionQuote('roundEnd');
+  assert.ok(typeof roundEndQuote === 'string' && roundEndQuote.length > 5);
+
+  const batchDoneQuote = C.getEmotionQuote('batchDone', 42);
+  assert.ok(batchDoneQuote.includes('42'));
+});

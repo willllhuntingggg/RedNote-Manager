@@ -31,6 +31,8 @@
   const KEY_PROCESSED = 'rn:processed';
   const KEY_HISTORY = 'rn:history';
   const KEY_AI_TAGS = 'rn:ai_tags';
+  const KEY_LIFETIME = 'rn:lifetime_cleaned';
+  const KEY_UNLOCKED_MILESTONES = 'rn:unlocked_milestones';
   const PROFILE_RE = /\/user\/profile(?:\/([0-9a-f]{24}))?/i;
   const MODAL_OVERLAY_RE = /^\/(?:explore|discovery\/item)\/[0-9a-zA-Z_-]+/i;
   const PROCESSED_CAP = 3000;
@@ -68,6 +70,8 @@
     anchorId: null,
     processed: { uncollect: [], unlike: [] },
     history: [],
+    lifetimeCleaned: 0,
+    unlockedMilestones: [],
     xsecTokens: {},
     running: false,
     scanning: false,
@@ -166,13 +170,15 @@
 
   async function loadStorage() {
     try {
-      const got = await chrome.storage.local.get([KEY_SETTINGS, KEY_PROCESSED, KEY_HISTORY, KEY_AI_TAGS]);
+      const got = await chrome.storage.local.get([KEY_SETTINGS, KEY_PROCESSED, KEY_HISTORY, KEY_AI_TAGS, KEY_LIFETIME, KEY_UNLOCKED_MILESTONES]);
       state.settings = C.clampSettings(got[KEY_SETTINGS]);
       const p = got[KEY_PROCESSED] || {};
       state.processed.uncollect = Array.isArray(p.uncollect) ? p.uncollect.slice(-PROCESSED_CAP) : [];
       state.processed.unlike = Array.isArray(p.unlike) ? p.unlike.slice(-PROCESSED_CAP) : [];
       state.history = Array.isArray(got[KEY_HISTORY]) ? got[KEY_HISTORY].slice(-HISTORY_CAP) : [];
       state.aiTags = got[KEY_AI_TAGS] || {};
+      state.lifetimeCleaned = Number(got[KEY_LIFETIME]) || 0;
+      state.unlockedMilestones = Array.isArray(got[KEY_UNLOCKED_MILESTONES]) ? got[KEY_UNLOCKED_MILESTONES] : [];
     } catch (e) {
       console.warn('[RedNote Manager] 读取存储失败', e);
     }
@@ -2504,7 +2510,8 @@
       // 本轮已全部看完了：重新洗牌开启新一轮，保证下轮也不重复
       stackState.list = shuffleList(stackState.list);
       stackState.index = 0;
-      showToast('🎉 本轮 ' + total + ' 篇已全部回顾完毕，已为您开启新一轮随机洗牌');
+      const roundMsg = (C && C.getEmotionQuote) ? C.getEmotionQuote('roundEnd') : ('🎉 本轮 ' + total + ' 篇已全部回顾完毕，已为您开启新一轮随机洗牌');
+      showToast(roundMsg);
     }
     renderStackCard();
 
@@ -2603,7 +2610,8 @@
       if (stackState.randomMode && newTotal > 1) {
         stackState.list = shuffleList(stackState.list);
         stackState.index = 0;
-        showToast('🎉 本轮已全部回顾完毕，已为您开启新一轮随机洗牌');
+        const roundMsg = (C && C.getEmotionQuote) ? C.getEmotionQuote('roundEnd') : '🎉 本轮已全部回顾完毕，已为您开启新一轮随机洗牌';
+        showToast(roundMsg);
       } else {
         stackState.index = newTotal - 1;
       }
@@ -2673,8 +2681,21 @@
               mode: 'unlike',
             });
             stackState.sessionProcessed = (stackState.sessionProcessed || 0) + 1;
-            if (stackState.sessionProcessed % 10 === 0) {
-              showToast('🎉 已连续清理 ' + stackState.sessionProcessed + ' 篇！');
+            state.lifetimeCleaned = (state.lifetimeCleaned || 0) + 1;
+            const prevCleaned = Math.max(0, state.lifetimeCleaned - 1);
+            const milestone = C.checkMilestone(prevCleaned, state.lifetimeCleaned, state.unlockedMilestones);
+            quietly(chrome.storage.local.set({ [KEY_LIFETIME]: state.lifetimeCleaned }));
+            if (milestone) {
+              state.unlockedMilestones.push(milestone.count);
+              quietly(chrome.storage.local.set({ [KEY_UNLOCKED_MILESTONES]: state.unlockedMilestones }));
+              quietly(chrome.runtime.sendMessage({
+                type: 'RN_MILESTONE_UNLOCKED',
+                milestone: milestone,
+                lifetime: state.lifetimeCleaned,
+              }));
+              showPageMilestoneModal(milestone, state.lifetimeCleaned);
+            } else if (stackState.sessionProcessed % 10 === 0) {
+              showToast('🎉 已连续清理 ' + stackState.sessionProcessed + ' 篇！生活轻盈了一点点 ✨');
             } else {
               showToast('已取消点赞');
             }
@@ -2759,8 +2780,21 @@
               mode: 'uncollect',
             });
             stackState.sessionProcessed = (stackState.sessionProcessed || 0) + 1;
-            if (stackState.sessionProcessed % 10 === 0) {
-              showToast('🎉 已连续清理 ' + stackState.sessionProcessed + ' 篇！');
+            state.lifetimeCleaned = (state.lifetimeCleaned || 0) + 1;
+            const prevCleaned = Math.max(0, state.lifetimeCleaned - 1);
+            const milestone = C.checkMilestone(prevCleaned, state.lifetimeCleaned, state.unlockedMilestones);
+            quietly(chrome.storage.local.set({ [KEY_LIFETIME]: state.lifetimeCleaned }));
+            if (milestone) {
+              state.unlockedMilestones.push(milestone.count);
+              quietly(chrome.storage.local.set({ [KEY_UNLOCKED_MILESTONES]: state.unlockedMilestones }));
+              quietly(chrome.runtime.sendMessage({
+                type: 'RN_MILESTONE_UNLOCKED',
+                milestone: milestone,
+                lifetime: state.lifetimeCleaned,
+              }));
+              showPageMilestoneModal(milestone, state.lifetimeCleaned);
+            } else if (stackState.sessionProcessed % 10 === 0) {
+              showToast('🎉 已连续清理 ' + stackState.sessionProcessed + ' 篇！生活轻盈了一点点 ✨');
             } else {
               showToast('已取消收藏');
             }
@@ -2875,7 +2909,8 @@
         if (isProcessed(s.mode, note.id)) continue;
 
         if (C.shouldCooldown(done, s.cooldownEvery)) {
-          log('批次冷却 ' + Math.round(s.cooldownMs / 1000) + ' 秒…', 'warn');
+          const companion = (C && C.getEmotionQuote) ? C.getEmotionQuote('cooldown') : '';
+          log('批次冷却 ' + Math.round(s.cooldownMs / 1000) + ' 秒… ' + (companion ? (' ' + companion) : ''), 'warn');
           if (!(await interruptibleSleep(s.cooldownMs))) { log('冷却中被停止', 'warn'); break; }
         }
 
@@ -2900,6 +2935,7 @@
           if (C.isSuccess(res.payload)) {
             streak = 0;
             state.stats.ok++;
+            state.lifetimeCleaned = (state.lifetimeCleaned || 0) + 1;
             markProcessed(s.mode, note.id);
             removeCandidate(s.mode, note.id);
             state.selected.delete(note.id);
@@ -2973,10 +3009,32 @@
         });
 
         if (state.stats.ok > 0) {
-          log('🎉 清理完成（共 ' + state.stats.ok + ' 篇）！若帮到了你，欢迎请作者喝杯咖啡 ☕', 'ok', {
-            isSponsor: true,
-          });
-          showToast('🎉 清理完成！已处理 ' + state.stats.ok + ' 篇笔记');
+          const prevCleaned = Math.max(0, state.lifetimeCleaned - state.stats.ok);
+          const milestone = C.checkMilestone(prevCleaned, state.lifetimeCleaned, state.unlockedMilestones);
+
+          quietly(chrome.storage.local.set({
+            [KEY_LIFETIME]: state.lifetimeCleaned,
+            [KEY_UNLOCKED_MILESTONES]: state.unlockedMilestones,
+          }));
+
+          if (milestone) {
+            state.unlockedMilestones.push(milestone.count);
+            quietly(chrome.storage.local.set({ [KEY_UNLOCKED_MILESTONES]: state.unlockedMilestones }));
+            quietly(chrome.runtime.sendMessage({
+              type: 'RN_MILESTONE_UNLOCKED',
+              milestone: milestone,
+              lifetime: state.lifetimeCleaned,
+            }));
+            showPageMilestoneModal(milestone, state.lifetimeCleaned);
+          } else {
+            const warmMsg = (C && C.getEmotionQuote)
+              ? C.getEmotionQuote('batchDone', state.stats.ok)
+              : ('🎉 清理完成！已处理 ' + state.stats.ok + ' 篇笔记');
+            log(warmMsg + ' 若帮到了你，欢迎请作者喝杯咖啡 ☕', 'ok', {
+              isSponsor: true,
+            });
+            showToast(warmMsg);
+          }
         }
       }
     }
@@ -3578,11 +3636,92 @@
       });
     }
 
+    // 4. 成就里程碑彩蛋弹窗
+    const mOverlay = document.createElement('div');
+    mOverlay.className = 'rn-page-milestone-overlay';
+    mOverlay.id = 'rn-page-milestone-overlay';
+    mOverlay.innerHTML = [
+      '<div class="rn-page-milestone-card">',
+      '  <div class="rn-confetti-container" id="rn-page-confetti"></div>',
+      '  <button class="rn-page-milestone-close" id="rn-page-m-close" type="button" title="关闭">&times;</button>',
+      '  <div class="rn-page-milestone-badge" id="rn-page-m-badge">🌱</div>',
+      '  <div class="rn-page-milestone-tag" id="rn-page-m-tag">MILESTONE 10</div>',
+      '  <h3 class="rn-page-milestone-title" id="rn-page-m-title">初见轻盈</h3>',
+      '  <div class="rn-page-milestone-desc" id="rn-page-m-desc">踏出数字断舍离的第一步，感觉真棒！</div>',
+      '  <div class="rn-page-milestone-quote" id="rn-page-m-quote">“种一棵树最好的时间是十年前，其次是现在。”</div>',
+      '  <div class="rn-page-milestone-stats">已累计断舍离 <b id="rn-page-m-count">10</b> 篇笔记 🌿</div>',
+      '  <button class="rn-page-milestone-btn" id="rn-page-m-ok" type="button">收下这份轻盈 ✨</button>',
+      '</div>',
+    ].join('');
+    root.appendChild(mOverlay);
+
+    const closePageM = function (ev) {
+      if (ev) ev.stopPropagation();
+      mOverlay.classList.remove('rn-open');
+      if (!stackState.open) {
+        if (state.els && state.els.host) {
+          state.els.host.style.pointerEvents = 'none';
+        }
+      }
+    };
+    $('#rn-page-m-close', root).addEventListener('click', closePageM);
+    $('#rn-page-m-ok', root).addEventListener('click', closePageM);
+
     bindPageEvents();
     refreshPageCards();
     updateSelectionFeedback();
     if (pageTimer) clearInterval(pageTimer);
     pageTimer = setInterval(refreshPageCards, 400);
+  }
+
+  function showPageMilestoneModal(milestone, lifetimeCount) {
+    if (!milestone) return;
+    if (!state.mounted) mount();
+    const root = state.els && state.els.root;
+    if (!root) return;
+    const overlay = $('#rn-page-milestone-overlay', root);
+    if (!overlay) return;
+
+    if (state.els && state.els.host) {
+      state.els.host.style.pointerEvents = 'auto';
+    }
+
+    const badge = $('#rn-page-m-badge', root);
+    const tag = $('#rn-page-m-tag', root);
+    const title = $('#rn-page-m-title', root);
+    const desc = $('#rn-page-m-desc', root);
+    const quoteEl = $('#rn-page-m-quote', root);
+    const countEl = $('#rn-page-m-count', root);
+
+    if (badge) badge.textContent = milestone.badge || '🌱';
+    if (tag) tag.textContent = milestone.tag || ('MILESTONE ' + milestone.count);
+    if (title) title.textContent = milestone.title || '达成成就';
+    if (desc) desc.textContent = milestone.desc || '';
+
+    const quotes = Array.isArray(milestone.quotes) ? milestone.quotes : [];
+    const quote = quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : '愿你在纷繁世界里，始终保持内心的澄澈与专注。';
+    if (quoteEl) quoteEl.textContent = quote;
+    if (countEl) countEl.textContent = String(lifetimeCount || milestone.count);
+
+    const confettiBox = $('#rn-page-confetti', root);
+    if (confettiBox) {
+      confettiBox.innerHTML = '';
+      const colors = ['#f59e0b', '#ff2442', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+      for (let i = 0; i < 28; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'rn-page-confetti';
+        piece.style.left = (Math.random() * 96) + '%';
+        piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        piece.style.animationDelay = (Math.random() * 1.2) + 's';
+        piece.style.animationDuration = (1.8 + Math.random() * 1.2) + 's';
+        piece.style.width = (5 + Math.random() * 5) + 'px';
+        piece.style.height = (7 + Math.random() * 6) + 'px';
+        piece.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
+        confettiBox.appendChild(piece);
+      }
+    }
+
+    overlay.classList.add('rn-open');
   }
 
   function unmount() {
@@ -3669,6 +3808,8 @@
       onProfile: PROFILE_RE.test(location.pathname) || (state.mounted && (activeModalPreview || stackSuspended || isModalOverlayRoute())),
       isOwnNotes: isOwnNotesPage(),
       risk: state.stats.risk,
+      lifetimeCleaned: state.lifetimeCleaned,
+      unlockedMilestones: state.unlockedMilestones,
     };
   }
 
