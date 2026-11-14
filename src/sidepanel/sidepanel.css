@@ -1033,11 +1033,10 @@ body {
 }
 
 .rn-log-undo-btn {
-  flex: 0 0 auto;
+  flex: 0 0 38px;
+  width: 38px;
   height: 38px;
-  padding: 0 11px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 0;
   border-radius: 9px;
   background: var(--undo-btn-bg);
   border: 1px solid var(--undo-btn-border);
@@ -1050,10 +1049,16 @@ body {
   justify-content: center;
 }
 
+.rn-log-undo-btn svg {
+  margin-right: 0 !important;
+  display: block;
+}
+
 .rn-log-undo-btn:hover:not(:disabled) {
   background: var(--undo-btn-hover-bg);
   border-color: var(--undo-btn-hover-border);
   color: var(--undo-btn-hover-text);
+  transform: translateY(-1px);
 }
 
 .rn-log-undo-btn:disabled {
@@ -1069,11 +1074,10 @@ body {
 }
 
 .rn-log-toggle-btn {
-  flex: 0 0 auto;
+  flex: 0 0 38px;
+  width: 38px;
   height: 38px;
-  padding: 0 10px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 0;
   border-radius: 9px;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -1084,13 +1088,28 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+}
+
+.rn-log-toggle-btn svg {
+  margin-right: 0 !important;
+  display: block;
 }
 
 .rn-log-toggle-btn:hover {
   background: var(--bg-card-hover);
   color: var(--text-main);
   border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.rn-log-toggle-btn.rn-collapsed {
+  opacity: 0.6;
+  background: transparent;
+}
+
+.rn-log-toggle-btn.rn-collapsed:hover {
+  opacity: 1;
+  background: var(--bg-card-hover);
 }
 
 .rn-toggle-arrow {

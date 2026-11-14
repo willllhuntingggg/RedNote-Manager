@@ -88,18 +88,15 @@
           <div class="rn-empty">正在连接小红书页面…</div>
         </div>
 
-        <!-- 底部控制面板（按钮排列：取消收藏、撤销、操作记录） -->
+        <!-- 底部控制面板（按钮排列：取消收藏、撤销、操作记录，后两者纯 Icon 紧凑呈现） -->
         <div class="rn-bottom-panel">
           <div class="rn-bottom-actions">
             <button class="rn-btn rn-primary rn-main-action-btn" id="rn-start" type="button">取消收藏</button>
-            <button class="rn-btn rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作 (⌘Z)" hidden>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-              <span class="rn-undo-label">撤销上次</span>
+            <button class="rn-btn rn-log-undo-btn" id="rn-log-undo" type="button" title="撤销最近一次操作" hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
             </button>
-            <button class="rn-btn rn-log-toggle-btn" id="rn-log-toggle" type="button" title="收起/展开操作记录">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-              <span>操作记录</span>
-              <span class="rn-toggle-arrow" id="rn-log-arrow">▾</span>
+            <button class="rn-btn rn-log-toggle-btn" id="rn-log-toggle" type="button" title="收起操作记录">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
             </button>
           </div>
           <div class="rn-log-collapse" id="rn-log-collapse">

@@ -3053,10 +3053,12 @@ test('底部布局重排与交互防线：主操作区下移、全选/反选Arra
   assert.strictEqual(contentJs.includes("ev.key === 'Escape' || ev.key === 'Esc' || ev.keyCode === 27"), true, 'content.js 全局键位捕获支持 Esc 多码兼容');
   assert.strictEqual(jsContent.includes('RN_CLOSE_STACK_VIEW'), true, 'sidepanel.js 支持 Esc 键跨端联动关闭叠卡');
 
-  // 5. 验证操作记录可折叠收起控制
+  // 5. 验证操作记录与撤销按钮纯 Icon 紧凑化与折叠收起控制
   assert.strictEqual(jsContent.includes('logExpanded = !logExpanded'), true, '支持操作记录折叠展开切换');
   assert.strictEqual(htmlContent.includes('id="rn-log-collapse"'), true, 'HTML 包含操作记录可收缩容器');
-  assert.strictEqual(htmlContent.includes('id="rn-log-arrow"'), true, '包含操作记录展开状态箭头');
+  assert.strictEqual(htmlContent.includes('id="rn-log-toggle"'), true, '包含操作记录折叠控制按钮');
+  assert.strictEqual(cssContent.includes('.rn-log-undo-btn') && cssContent.includes('flex: 0 0 38px;'), true, '撤销按钮为 38px 正方形 Icon 按钮');
+  assert.strictEqual(cssContent.includes('.rn-log-toggle-btn') && cssContent.includes('flex: 0 0 38px;'), true, '操作记录为 38px 正方形 Icon 按钮');
 });
 
 test('专业设计与叠卡正序排序演进：去玩具化矢量图标、移除列表冗余id、叠卡正序/倒序/随机分段器', () => {

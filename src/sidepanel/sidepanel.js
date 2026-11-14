@@ -430,12 +430,17 @@ function applyState(st) {
   const undoKeyLabel = isMac ? '⌘Z' : 'Ctrl+Z';
 
   undoBtns.forEach(function (btn) {
+    const isLogUndo = btn.id === 'rn-log-undo';
     if (isRunning || isScanning) {
       btn.disabled = true;
     } else if (lastUndo && lastUndo.canUndo) {
       btn.disabled = false;
-      if (btn.id === 'rn-log-undo') {
+      if (isLogUndo) {
         btn.hidden = false;
+        btn.title = lastUndo.type === 'single'
+          ? ('撤销上一次操作（' + (lastUndo.title || lastUndo.noteId) + '） (' + undoKeyLabel + ')')
+          : ('撤销上一次操作：批量处理的 ' + lastUndo.count + ' 篇笔记 (' + undoKeyLabel + ')');
+        return;
       }
       const labelText = lastUndo.type === 'single'
         ? ('撤销 (' + undoKeyLabel + ')')
@@ -453,8 +458,10 @@ function applyState(st) {
       }
     } else {
       btn.disabled = true;
-      if (btn.id === 'rn-log-undo') {
+      if (isLogUndo) {
         btn.hidden = true;
+        btn.title = '当前没有可撤销的操作记录 (' + undoKeyLabel + ')';
+        return;
       }
       const labelText = '撤销 (' + undoKeyLabel + ')';
       const innerLabel = btn.querySelector('.rn-undo-label');
