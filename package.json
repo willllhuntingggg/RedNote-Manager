@@ -7,7 +7,8 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "test:dom": "node tests/dom/smoke.dom.js && node tests/dom/scenarios.dom.js && node tests/dom/selection.dom.js && node tests/dom/page-select.dom.js",
-    "package": "node scripts/package.js"
+    "package": "node scripts/package.js",
+    "package:crx": "node scripts/pack_crx.js"
   },
   "devDependencies": {
     "jsdom": "^25.0.1"
