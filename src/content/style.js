@@ -829,6 +829,195 @@ globalThis.RNStyle = `
     filter: drop-shadow(0 2px 6px rgba(255, 184, 0, 0.5)) !important;
   }
 
+  /* ================= 叠卡速览模式浅色主题 (Stack Deck Light Theme) ================= */
+  .rn-stack-overlay[data-theme="light"] {
+    background: rgba(243, 244, 248, 0.85) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-header {
+    color: #191924 !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-order-group {
+    background: rgba(0, 0, 0, 0.05) !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-order-btn {
+    color: #64667a !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-order-btn:hover {
+    color: #191924 !important;
+    background: rgba(0, 0, 0, 0.06) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-order-btn.rn-active {
+    background: #ff2e4d !important;
+    color: #ffffff !important;
+    box-shadow: 0 1px 4px rgba(255, 46, 77, 0.35) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-counter {
+    color: #64667a !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-close {
+    background: rgba(0, 0, 0, 0.06) !important;
+    color: #475569 !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-close:hover {
+    background: rgba(0, 0, 0, 0.12) !important;
+    color: #0f172a !important;
+  }
+
+  /* 叠卡卡片浅色层叠效果 */
+  .rn-stack-overlay[data-theme="light"] .rn-card-layer {
+    border-color: rgba(0, 0, 0, 0.08) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-layer-2 {
+    background-color: #e2e8f0 !important;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-layer-1 {
+    background-color: #f1f5f9 !important;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-layer-1.rn-layer-promoting {
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-main {
+    background: #ffffff !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06) !important;
+  }
+
+  /* 卡片内部元素浅色适配 */
+  .rn-stack-overlay[data-theme="light"] .rn-card-cover-box {
+    background: #f8fafc !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-cover-empty {
+    color: #cbd5e1 !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-status-pill {
+    color: #1e293b !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-status-pill.rn-pill-done {
+    background: #22c55e !important;
+    border-color: #16a34a !important;
+    color: #ffffff !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-info-box {
+    background: #ffffff !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-title {
+    color: #191924 !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-title:hover {
+    color: #ff2e4d !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-meta {
+    color: #64748b !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-card-author {
+    color: #e11d48 !important;
+  }
+  .rn-stack-overlay[data-theme="light"] #rn-card-id {
+    color: #94a3b8 !important;
+  }
+
+  /* 底部操作与导航浅色适配 */
+  .rn-stack-overlay[data-theme="light"] .rn-action-nav-btn {
+    color: #334155 !important;
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-action-nav-btn:hover:not(:disabled) {
+    color: #0f172a !important;
+    background: #f8fafc !important;
+    border-color: #94a3b8 !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-action-btn.rn-btn-uncollect {
+    background: #fffbeb !important;
+    border: 1.5px solid #f59e0b !important;
+    color: #b45309 !important;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-action-btn.rn-btn-uncollect:hover:not(:disabled) {
+    background: #f59e0b !important;
+    border-color: #d97706 !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(245, 158, 11, 0.32) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-action-btn.rn-btn-unlike {
+    background: #fff1f2 !important;
+    border: 1.5px solid #ff2e4d !important;
+    color: #e11d48 !important;
+    box-shadow: 0 4px 14px rgba(255, 46, 77, 0.18) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-action-btn.rn-btn-unlike:hover:not(:disabled) {
+    background: #ff2e4d !important;
+    border-color: #e11d48 !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(255, 46, 77, 0.32) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-kbd {
+    background: rgba(0, 0, 0, 0.06) !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
+    color: inherit !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-action-btn:hover:not(:disabled) .rn-stack-kbd {
+    background: rgba(255, 255, 255, 0.28) !important;
+    border-color: rgba(255, 255, 255, 0.45) !important;
+    color: #ffffff !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-tips {
+    color: #64748b !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-tips kbd {
+    color: #475569 !important;
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-icon-btn {
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #475569 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  }
+  .rn-stack-overlay[data-theme="light"] .rn-stack-icon-btn:hover {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+  }
+
+  /* 底部条与筛选指示胶囊浅色适配 */
+  .rn-bar-wrap[data-theme="light"] {
+    background: rgba(255, 255, 255, 0.94) !important;
+    border-color: rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 46, 77, 0.2) !important;
+    color: #191924 !important;
+  }
+  .rn-bar-wrap[data-theme="light"] .rn-bar-info {
+    color: #191924 !important;
+  }
+  .rn-bar-wrap[data-theme="light"] .rn-bar-btn {
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+  }
+  .rn-bar-wrap[data-theme="light"] .rn-bar-btn:hover {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+  .rn-filter-pill[data-theme="light"] {
+    background: rgba(255, 255, 255, 0.94) !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 46, 77, 0.2) !important;
+    color: #191924 !important;
+  }
+  .rn-filter-pill[data-theme="light"] .rn-filter-pill-text {
+    color: #334155 !important;
+  }
+
   /* ================= 成就里程碑彩蛋弹窗 (Milestone Modal in Page) ================= */
   .rn-page-milestone-overlay {
     position: fixed !important;

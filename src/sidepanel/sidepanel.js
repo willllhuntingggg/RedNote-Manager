@@ -1545,10 +1545,12 @@ function bindEvents() {
   function openNotePopup(targetUrl) {
     if (!targetUrl || targetUrl === '#' || targetUrl.startsWith('javascript:')) return;
     popupOpeningTimer = Date.now();
-    const width = 540;
-    const height = Math.min(880, Math.round((window.screen.availHeight || 800) * 0.9));
-    const left = Math.max(0, Math.round(((window.screen.availWidth || 1200) - width) / 2));
-    const top = Math.max(0, Math.round(((window.screen.availHeight || 800) - height) / 2));
+    const availW = window.screen.availWidth || 1400;
+    const availH = window.screen.availHeight || 900;
+    const width = Math.min(1000, Math.max(860, Math.round(availW * 0.65)));
+    const height = Math.min(920, Math.max(680, Math.round(availH * 0.9)));
+    const left = Math.max(0, Math.round((availW - width) / 2));
+    const top = Math.max(0, Math.round((availH - height) / 2));
     const features = 'popup=yes,width=' + width + ',height=' + height + ',top=' + top + ',left=' + left + ',scrollbars=yes,resizable=yes';
     window.open(targetUrl, 'rn_preview_popup', features);
   }

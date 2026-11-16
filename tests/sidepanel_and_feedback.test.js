@@ -2921,6 +2921,25 @@ test('侧边栏外观主题管理体系：light、dark、auto 设置项完整支
   assert.strictEqual(mockResolveEffectiveTheme('auto', false), 'light', '用户设置为 auto 且系统为浅色时，解析为 light');
   assert.strictEqual(mockResolveEffectiveTheme(undefined, false), 'light', '未定义时默认 auto，随系统浅色解析为 light');
   assert.strictEqual(mockResolveEffectiveTheme(undefined, true), 'dark', '未定义时默认 auto，随系统深色解析为 dark');
+
+  // 5. 验证页面端叠卡速览模式与浮层的主题联动
+  const contentStylePath = path.join(__dirname, '../src/content/style.js');
+  const contentStyleCode = fs.readFileSync(contentStylePath, 'utf8');
+  assert.strictEqual(contentStyleCode.includes('.rn-stack-overlay[data-theme="light"]'), true, '样式表包含叠卡浅色主题根选择器');
+  assert.strictEqual(contentStyleCode.includes('.rn-stack-overlay[data-theme="light"] .rn-card-main'), true, '叠卡包含浅色主卡片背景样式');
+  assert.strictEqual(contentStyleCode.includes('.rn-stack-overlay[data-theme="light"] .rn-stack-action-btn.rn-btn-uncollect'), true, '叠卡浅色模式包含专属取消收藏暖黄按钮样式');
+  assert.strictEqual(contentStyleCode.includes('.rn-stack-overlay[data-theme="light"] .rn-stack-action-btn.rn-btn-unlike'), true, '叠卡浅色模式包含专属取消点赞玫红按钮样式');
+
+  const contentJsPath = path.join(__dirname, '../src/content/content.js');
+  const contentJsCode = fs.readFileSync(contentJsPath, 'utf8');
+  assert.strictEqual(contentJsCode.includes('function applyTheme'), true, 'content.js 包含 applyTheme 函数');
+  assert.strictEqual(contentJsCode.includes("setAttribute('data-theme', effective)"), true, 'content.js 向叠卡及宿主节点设置 data-theme 属性');
+
+  // 6. 验证笔记弹窗预览尺寸加宽（自适应 860px - 1000px，彻底摆脱 540px 过窄挤压）
+  assert.strictEqual(jsContent.includes('const width = 540;'), false, 'sidepanel.js 彻底废除 540px 狭窄弹窗');
+  assert.strictEqual(contentJsCode.includes('const width = 540;'), false, 'content.js 彻底废除 540px 狭窄弹窗');
+  assert.strictEqual(jsContent.includes('Math.min(1000, Math.max(860'), true, 'sidepanel.js 使用 860px-1000px 适度加宽预览');
+  assert.strictEqual(contentJsCode.includes('Math.min(1000, Math.max(860'), true, 'content.js 使用 860px-1000px 适度加宽预览');
 });
 
 test('偏好设置全屏横向滑入收起交互架构 (向左滑入/向右收起，集成读取操作与设置齿轮)', () => {

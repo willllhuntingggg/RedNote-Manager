@@ -2052,6 +2052,7 @@
 
   function openStackView(opts) {
     if (!state.mounted) mount();
+    applyTheme();
 
     // 1. 核心安全校验：若停留在「我的笔记/发布」页面，坚决拦截并引导切换 Tab
     const curTab = activeTabEl();
@@ -3371,6 +3372,36 @@
     broadcastState();
   }
 
+  /* ============================ 主题外观同步 (Theme Sync) ============================ */
+
+  function resolveEffectiveTheme(appearance) {
+    if (appearance === 'light') return 'light';
+    if (appearance === 'dark') return 'dark';
+    return (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+
+  function applyTheme() {
+    const currentAppearance = (state.settings && state.settings.appearance) || 'auto';
+    const effective = resolveEffectiveTheme(currentAppearance);
+    if (state.els && state.els.host) {
+      state.els.host.setAttribute('data-appearance', currentAppearance);
+      state.els.host.setAttribute('data-theme', effective);
+    }
+    if (stackState.els && stackState.els.overlay) {
+      stackState.els.overlay.setAttribute('data-appearance', currentAppearance);
+      stackState.els.overlay.setAttribute('data-theme', effective);
+    }
+    if (state.els && state.els.wrap) {
+      state.els.wrap.setAttribute('data-theme', effective);
+    }
+    if (state.els && state.els.filterPill) {
+      state.els.filterPill.setAttribute('data-theme', effective);
+    }
+    if (state.els && state.els.mOverlay) {
+      state.els.mOverlay.setAttribute('data-theme', effective);
+    }
+  }
+
   /* ============================ 挂载页面底部反馈栏与叠卡浮层 ============================ */
 
   function mount() {
@@ -3658,9 +3689,11 @@
     $('#rn-page-m-close', root).addEventListener('click', closePageM);
     $('#rn-page-m-ok', root).addEventListener('click', closePageM);
 
+    state.els.mOverlay = mOverlay;
     bindPageEvents();
     refreshPageCards();
     updateSelectionFeedback();
+    applyTheme();
     if (pageTimer) clearInterval(pageTimer);
     pageTimer = setInterval(refreshPageCards, 400);
   }
@@ -4004,11 +4037,13 @@
     }
     const finalUrl = C.buildNoteUrl(noteId, token);
     if (finalUrl) {
-      // 动态计算居中悬浮坐标与尺寸，呈现独立精美的小红书轻量查看窗口
-      const width = 540;
-      const height = Math.min(880, Math.round((window.screen.availHeight || 800) * 0.9));
-      const left = Math.max(0, Math.round(((window.screen.availWidth || 1200) - width) / 2));
-      const top = Math.max(0, Math.round(((window.screen.availHeight || 800) - height) / 2));
+      // 动态计算居中悬浮坐标与尺寸，呈现宽度适宜、完整展示图文与评论的小红书轻量查看窗口
+      const availW = window.screen.availWidth || 1400;
+      const availH = window.screen.availHeight || 900;
+      const width = Math.min(1000, Math.max(860, Math.round(availW * 0.65)));
+      const height = Math.min(920, Math.max(680, Math.round(availH * 0.9)));
+      const left = Math.max(0, Math.round((availW - width) / 2));
+      const top = Math.max(0, Math.round((availH - height) / 2));
       const features = 'popup=yes,width=' + width + ',height=' + height + ',top=' + top + ',left=' + left + ',scrollbars=yes,resizable=yes';
       
       // 使用固定窗口名称 'rn_preview_popup'，多次点击时会在同一个浮动窗口内平滑切换展示，绝不乱堆叠窗口！
@@ -4142,6 +4177,7 @@
     if (msg.type === 'RN_UPDATE_SETTINGS') {
       state.settings = C.clampSettings(Object.assign({}, state.settings, msg.settings || {}));
       saveSettings();
+      applyTheme();
       broadcastState();
       sendResponse({ ok: true, state: fullPublicState() });
       return;
@@ -4305,9 +4341,36 @@
     } catch (e) {}
 
     await loadStorage();
+    applyTheme();
     updateMyProfileInfo();
     quietly(detectMyUserInfo());
     quietly(syncPageTokens());
+
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area === 'local' && changes[KEY_SETTINGS]) {
+          const next = changes[KEY_SETTINGS].newValue;
+          if (next && next.appearance !== (state.settings && state.settings.appearance)) {
+            state.settings = C.clampSettings(Object.assign({}, state.settings, next));
+            applyTheme();
+          }
+        }
+      });
+    }
+
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleSysTheme = function () {
+        if (!state.settings || state.settings.appearance === 'auto') {
+          applyTheme();
+        }
+      };
+      if (typeof mql.addEventListener === 'function') {
+        mql.addEventListener('change', handleSysTheme);
+      } else if (typeof mql.addListener === 'function') {
+        mql.addListener(handleSysTheme);
+      }
+    }
     tick();
     syncDomCardsToCandidates();
     broadcastState();
